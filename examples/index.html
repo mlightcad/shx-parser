@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHX Font Viewer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .file-input {
+            padding: 20px;
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .characters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 10px;
+            padding: 20px;
+        }
+        .character-cell {
+            border: 1px solid #ccc;
+            padding: 10px;
+            text-align: center;
+            border-radius: 4px;
+        }
+        .character-cell svg {
+            max-width: 100%;
+            height: auto;
+        }
+        .character-info {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        .font-info {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .font-info h2 {
+            margin-top: 0;
+            margin-bottom: 15px;
+        }
+        .font-info-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 8px;
+        }
+        .font-info-label {
+            font-weight: bold;
+            color: #333;
+        }
+        .font-info-value {
+            color: #666;
+        }
+        .mode-selector {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #ccc;
+        }
+        .mode-tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            border-bottom: none;
+            margin-bottom: -1px;
+        }
+        .mode-tab.active {
+            background-color: #fff;
+            border-color: #ccc;
+            border-bottom-color: #fff;
+        }
+        .mode-content {
+            display: none;
+        }
+        .mode-content.active {
+            display: block;
+        }
+        .font-select {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SHX Font Viewer</h1>
+        
+        <div class="mode-selector">
+            <div class="mode-tab active" data-mode="local">Local Font File</div>
+            <div class="mode-tab" data-mode="remote">Remote Font Library</div>
+        </div>
+
+        <div id="localMode" class="mode-content active">
+            <div class="file-input">
+                <input type="file" id="shxFile" accept=".shx" />
+                <p>Select an SHX font file to view its characters</p>
+            </div>
+        </div>
+
+        <div id="remoteMode" class="mode-content">
+            <select id="remoteFontSelect" class="font-select">
+                <option value="">Select a font from the library...</option>
+            </select>
+        </div>
+
+        <div id="loading" class="loading">
+            Loading font data...
+        </div>
+
+        <div id="fontInfo" class="font-info" style="display: none;">
+            <h2>Font Information</h2>
+            <div class="font-info-grid">
+                <div class="font-info-label">Font Type:</div>
+                <div id="fontType" class="font-info-value"></div>
+                <div class="font-info-label">File Version:</div>
+                <div id="fileVersion" class="font-info-value"></div>
+                <div class="font-info-label">Number of Characters:</div>
+                <div id="charCount" class="font-info-value"></div>
+            </div>
+        </div>
+        <div id="charactersGrid" class="characters-grid"></div>
+    </div>
+
+    <script type="module">
+        import { ShxFont } from './dist/index.es.js';
+
+        class ShxFontViewer {
+            constructor() {
+                this.fileInput = document.getElementById('shxFile');
+                this.grid = document.getElementById('charactersGrid');
+                this.fontInfoDiv = document.getElementById('fontInfo');
+                this.remoteFontSelect = document.getElementById('remoteFontSelect');
+                this.loadingDiv = document.getElementById('loading');
+                this.font = null;
+                this.scale = 40;
+                this.fontLibraryUrl = 'https://raw.githubusercontent.com/mlight-lee/cad-data/main/fonts/fonts.json';
+                this.fontBaseUrl = 'https://raw.githubusercontent.com/mlight-lee/cad-data/main/fonts/';
+
+                this.init();
+            }
+
+            init() {
+                this.fileInput.addEventListener('change', this.handleFileSelect.bind(this));
+                this.remoteFontSelect.addEventListener('change', this.handleRemoteFontSelect.bind(this));
+                this.initModeTabs();
+                this.loadFontLibrary();
+            }
+
+            initModeTabs() {
+                const tabs = document.querySelectorAll('.mode-tab');
+                tabs.forEach(tab => {
+                    tab.addEventListener('click', () => {
+                        // Remove active class from all tabs and contents
+                        tabs.forEach(t => t.classList.remove('active'));
+                        document.querySelectorAll('.mode-content').forEach(c => c.classList.remove('active'));
+                        
+                        // Add active class to clicked tab and corresponding content
+                        tab.classList.add('active');
+                        document.getElementById(tab.dataset.mode + 'Mode').classList.add('active');
+                        
+                        // Clear previous display
+                        this.clearDisplay();
+                    });
+                });
+            }
+
+            clearDisplay() {
+                this.grid.innerHTML = '';
+                this.fontInfoDiv.style.display = 'none';
+                this.font = null;
+            }
+
+            async loadFontLibrary() {
+                try {
+                    const response = await fetch(this.fontLibraryUrl);
+                    if (!response.ok) throw new Error('Failed to load font library');
+                    const fonts = await response.json();
+                    
+                    // Clear existing options except the first one
+                    this.remoteFontSelect.innerHTML = '<option value="">Select a font from the library...</option>';
+                    
+                    // Filter and add only SHX font options
+                    fonts
+                        .filter(font => font.type === 'shx')
+                        .forEach(font => {
+                            const option = document.createElement('option');
+                            option.value = font.file;
+                            option.textContent = font.name;
+                            this.remoteFontSelect.appendChild(option);
+                        });
+
+                    if (this.remoteFontSelect.options.length === 1) {
+                        // If no SHX fonts were found
+                        const option = document.createElement('option');
+                        option.disabled = true;
+                        option.textContent = 'No SHX fonts available';
+                        this.remoteFontSelect.appendChild(option);
+                    }
+                } catch (error) {
+                    console.error('Error loading font library:', error);
+                    alert('Error loading font library');
+                }
+            }
+
+            async handleRemoteFontSelect(event) {
+                const fontFile = event.target.value;
+                if (!fontFile) return;
+
+                this.loadingDiv.style.display = 'block';
+                this.clearDisplay();
+
+                try {
+                    const response = await fetch(this.fontBaseUrl + fontFile);
+                    if (!response.ok) throw new Error('Failed to load font file');
+                    const arrayBuffer = await response.arrayBuffer();
+                    this.font = new ShxFont(arrayBuffer);
+                    this.displayFontInfo();
+                    this.displayCharacters();
+                } catch (error) {
+                    console.error('Error loading remote font:', error);
+                    alert('Error loading remote font file');
+                } finally {
+                    this.loadingDiv.style.display = 'none';
+                }
+            }
+
+            async handleFileSelect(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                this.loadingDiv.style.display = 'block';
+                this.clearDisplay();
+
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    this.font = new ShxFont(arrayBuffer);
+                    this.displayFontInfo();
+                    this.displayCharacters();
+                } catch (error) {
+                    console.error('Error loading font:', error);
+                    alert('Error loading font file');
+                } finally {
+                    this.loadingDiv.style.display = 'none';
+                }
+            }
+
+            displayFontInfo() {
+                const fontData = this.font.fontData;
+                const header = fontData.header;
+                const content = fontData.content;
+
+                // Show the font info section
+                this.fontInfoDiv.style.display = 'block';
+
+                // Update font information
+                document.getElementById('fontType').textContent = header.fontType;
+                document.getElementById('fileVersion').textContent = header.fileVersion;
+                document.getElementById('charCount').textContent = Object.keys(content.data).length;
+            }
+
+            createSvgElement(width, height, viewBox) {
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('width', width.toString());
+                svg.setAttribute('height', height.toString());
+                svg.setAttribute('viewBox', viewBox);
+                return svg;
+            }
+
+            createPathElement(vectors) {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                let d = '';
+
+                vectors.forEach((vector, index) => {
+                    const x = (vector.x * this.scale) + 500;
+                    const y = (-vector.y * this.scale) + 500;
+                    
+                    if (vector.penDown) {
+                        if (index === 0 || !vectors[index - 1].penDown) {
+                            d += `M ${x} ${y} `;
+                        } else {
+                            d += `L ${x} ${y} `;
+                        }
+                    }
+                });
+
+                path.setAttribute('d', d);
+                path.setAttribute('stroke', 'black');
+                path.setAttribute('stroke-width', '2');
+                path.setAttribute('fill', 'none');
+                return path;
+            }
+
+            createCharacterCell(code, shape) {
+                const cell = document.createElement('div');
+                cell.className = 'character-cell';
+
+                const svg = this.createSvgElement(100, 100, '0 0 1000 1000');
+                
+                // Create a path for each polyline
+                shape.polylines.forEach(polyline => {
+                    let d = '';
+                    polyline.forEach((point, index) => {
+                        const x = (point.x * this.scale) + 500;
+                        const y = (-point.y * this.scale) + 500;
+                        d += index === 0 ? `M ${x} ${y} ` : `L ${x} ${y} `;
+                    });
+
+                    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    path.setAttribute('d', d);
+                    path.setAttribute('stroke', 'black');
+                    path.setAttribute('stroke-width', '2');
+                    path.setAttribute('fill', 'none');
+                    svg.appendChild(path);
+                });
+
+                cell.appendChild(svg);
+
+                const info = document.createElement('div');
+                info.className = 'character-info';
+                info.textContent = `Code: ${code}`;
+                cell.appendChild(info);
+
+                return cell;
+            }
+
+            displayCharacters() {
+                this.grid.innerHTML = '';
+                const fontData = this.font.fontData;
+
+                Object.entries(fontData.content.data).forEach(([code, data]) => {
+                    const shape = this.font.getCharShape(parseInt(code), 12);
+                    if (shape) {
+                        const cell = this.createCharacterCell(code, shape);
+                        this.grid.appendChild(cell);
+                    }
+                });
+            }
+        }
+
+        // Initialize the viewer
+        new ShxFontViewer();
+    </script>
+</body>
+</html> 

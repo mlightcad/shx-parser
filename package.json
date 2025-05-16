@@ -1,0 +1,57 @@
+{
+  "name": "shx-parser",
+  "version": "1.0.0",
+  "description": "A TypeScript library for parsing AutoCAD SHX font files",
+  "type": "module",
+  "main": "dist/shx-parser.cjs.js",
+  "module": "dist/shx-parser.es.js",
+  "browser": "dist/shx-parser.umd.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "vite build && tsc --emitDeclarationOnly",
+    "test": "jest",
+    "example": "npm run build && cp-cli dist examples/dist && node examples/example.js",
+    "serve": "npm run build && cp-cli dist examples/dist && vite",
+    "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json}\"",
+    "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\"",
+    "lint:fix": "eslint \"src/**/*.{ts,tsx,js,jsx}\" --fix"
+  },
+  "keywords": [
+    "autocad",
+    "shx",
+    "font",
+    "parser",
+    "typescript"
+  ],
+  "author": "MLight Lee <mlight.lee@outlook.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/mlight-lee/shx-parser"
+  },
+  "homepage": "https://github.com/mlight-lee/shx-parser",
+  "bugs": {
+    "url": "https://github.com/mlight-lee/shx-parser/issues"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.26.0",
+    "@types/jest": "^29.5.12",
+    "@types/node": "^20.11.24",
+    "@typescript-eslint/eslint-plugin": "^8.32.1",
+    "@typescript-eslint/parser": "^8.32.1",
+    "cp-cli": "^2.0.0",
+    "eslint": "^9.26.0",
+    "eslint-config-prettier": "^10.1.5",
+    "eslint-plugin-prettier": "^5.4.0",
+    "jest": "^29.7.0",
+    "prettier": "^3.2.5",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3",
+    "vite": "^6.3.5"
+  }
+}
