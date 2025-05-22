@@ -1,21 +1,11 @@
 import { Point } from './point';
-import { ShxByteEncoder } from './byteEncoder';
 import { ShxFontData, ShxFontType } from './fontData';
 import { Arc } from './arc';
+import { ShxFileReader } from './fileReader';
+import { ShxShape } from './shape';
 
 const CIRCLE_SPAN = Math.PI / 18;
 const DEFAULT_FONT_SIZE = 12;
-
-/**
- * Represents a shape defined by a collection of polylines and an optional last point.
- * Used to describe the geometry of a character in the SHX font.
- */
-export interface ShxShape {
-  /** The last point in the shape's geometry, if any */
-  readonly lastPoint?: Point;
-  /** Array of polylines, where each polyline is an array of points */
-  readonly polylines: Point[][];
-}
 
 /**
  * Parses SHX font data into shapes on demand. To improve performance, the shape is parsed on demand by
@@ -68,10 +58,10 @@ export class ShxShapeParser {
     if (this.shapeData.has(code)) {
       const scale = size / DEFAULT_FONT_SIZE;
       const shape = this.shapeData.get(code) as ShxShape;
-      textShape = {
-        lastPoint: shape.lastPoint?.clone().multiply(scale),
-        polylines: shape.polylines.map(line => line.map(point => point.clone().multiply(scale))),
-      };
+      textShape = new ShxShape(
+        shape.lastPoint?.clone().multiply(scale),
+        shape.polylines.map(line => line.map(point => point.clone().multiply(scale)))
+      );
     }
     return textShape;
   }
@@ -83,7 +73,6 @@ export class ShxShapeParser {
    * @returns The parsed shape
    */
   private parseShape(data: Uint8Array, scale: number): ShxShape {
-    const encoder = new ShxByteEncoder(data.buffer);
     let currentPoint = new Point();
     const polylines: Point[][] = [];
     let currentPolyline: Point[] = [];
@@ -97,7 +86,6 @@ export class ShxShapeParser {
       sp,
       isPenDown,
       scale,
-      encoder,
     };
 
     for (let i = 0; i < data.length; i++) {
@@ -110,10 +98,7 @@ export class ShxShapeParser {
       }
     }
 
-    return {
-      lastPoint: state.currentPoint,
-      polylines: state.polylines,
-    };
+    return new ShxShape(state.currentPoint, state.polylines);
   }
 
   /**
@@ -136,7 +121,6 @@ export class ShxShapeParser {
       sp: Point[];
       isPenDown: boolean;
       scale: number;
-      encoder: ShxByteEncoder;
     }
   ): number {
     let i = index;
@@ -303,7 +287,6 @@ export class ShxShapeParser {
       polylines: Point[][];
       currentPolyline: Point[];
       scale: number;
-      encoder: ShxByteEncoder;
       isPenDown: boolean;
     }
   ): number {
@@ -377,8 +360,8 @@ export class ShxShapeParser {
   ): number {
     let i = index;
     const vec = new Point();
-    vec.x = ShxByteEncoder.byteToSByte(data[++i]);
-    vec.y = ShxByteEncoder.byteToSByte(data[++i]);
+    vec.x = ShxFileReader.byteToSByte(data[++i]);
+    vec.y = ShxFileReader.byteToSByte(data[++i]);
     state.currentPoint.add(vec.multiply(state.scale));
     if (state.isPenDown) {
       state.currentPolyline.push(state.currentPoint.clone());
@@ -399,8 +382,8 @@ export class ShxShapeParser {
     let i = index;
     while (true) {
       const vec = new Point();
-      vec.x = ShxByteEncoder.byteToSByte(data[++i]);
-      vec.y = ShxByteEncoder.byteToSByte(data[++i]);
+      vec.x = ShxFileReader.byteToSByte(data[++i]);
+      vec.y = ShxFileReader.byteToSByte(data[++i]);
       if (vec.x === 0 && vec.y === 0) {
         break;
       }
@@ -424,7 +407,7 @@ export class ShxShapeParser {
   ): number {
     let i = index;
     const radius = data[++i] * state.scale;
-    const flag = ShxByteEncoder.byteToSByte(data[++i]);
+    const flag = ShxFileReader.byteToSByte(data[++i]);
     const startOctant = (flag & 0x70) >> 4;
     let octantCount = flag & 0x07;
     const isClockwise = flag < 0;
@@ -460,7 +443,7 @@ export class ShxShapeParser {
     const hr = data[++i];
     const lr = data[++i];
     const r = (hr * 255 + lr) * state.scale;
-    const flag = ShxByteEncoder.byteToSByte(data[++i]);
+    const flag = ShxFileReader.byteToSByte(data[++i]);
     const n1 = (flag & 0x70) >> 4;
     let n2 = flag & 0x07;
     if (n2 === 0) {
@@ -533,9 +516,9 @@ export class ShxShapeParser {
   ): number {
     let i = index;
     const vec = new Point();
-    vec.x = ShxByteEncoder.byteToSByte(data[++i]);
-    vec.y = ShxByteEncoder.byteToSByte(data[++i]);
-    const bulge = ShxByteEncoder.byteToSByte(data[++i]);
+    vec.x = ShxFileReader.byteToSByte(data[++i]);
+    vec.y = ShxFileReader.byteToSByte(data[++i]);
+    const bulge = ShxFileReader.byteToSByte(data[++i]);
     state.currentPoint = this.handleArcSegment(
       state.currentPoint,
       vec,
@@ -560,12 +543,12 @@ export class ShxShapeParser {
     let i = index;
     while (true) {
       const vec = new Point();
-      vec.x = ShxByteEncoder.byteToSByte(data[++i]);
-      vec.y = ShxByteEncoder.byteToSByte(data[++i]);
+      vec.x = ShxFileReader.byteToSByte(data[++i]);
+      vec.y = ShxFileReader.byteToSByte(data[++i]);
       if (vec.x === 0 && vec.y === 0) {
         break;
       }
-      const bulge = ShxByteEncoder.byteToSByte(data[++i]);
+      const bulge = ShxFileReader.byteToSByte(data[++i]);
       state.currentPoint = this.handleArcSegment(
         state.currentPoint,
         vec,
@@ -668,19 +651,19 @@ export class ShxShapeParser {
     const shape = this.parse(code, height);
     if (shape) {
       if (width === height) {
-        return {
-          lastPoint: shape.lastPoint?.clone().add(translate),
-          polylines: shape.polylines.map(line => line.map(point => point.clone().add(translate))),
-        };
+        return new ShxShape(
+          shape.lastPoint?.clone().add(translate),
+          shape.polylines.map(line => line.map(point => point.clone().add(translate)))
+        );
       } else {
         const lastPoint = shape.lastPoint?.clone();
         if (lastPoint) lastPoint.x *= width / height;
         const polylines = shape.polylines.map(line => line.map(point => point.clone()));
         polylines.forEach(line => line.forEach(point => (point.x *= width / height)));
-        return {
-          lastPoint: lastPoint?.add(translate),
-          polylines: polylines.map(line => line.map(point => point.add(translate))),
-        };
+        return new ShxShape(
+          lastPoint?.add(translate),
+          polylines.map(line => line.map(point => point.add(translate)))
+        );
       }
     }
     return undefined;
