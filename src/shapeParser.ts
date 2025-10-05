@@ -5,7 +5,6 @@ import { ShxFileReader } from './fileReader';
 import { ShxShape } from './shape';
 
 const CIRCLE_SPAN = Math.PI / 18;
-const DEFAULT_FONT_SIZE = 12;
 
 /**
  * Parses SHX font data into shapes on demand. To improve performance, the shape is parsed on demand by
@@ -14,8 +13,8 @@ const DEFAULT_FONT_SIZE = 12;
 export class ShxShapeParser {
   /** Font data of the font file */
   private readonly fontData: ShxFontData;
-  /** Cached shapes for performance. Key is `${code}_${size}` */
-  private shapeCache: Map<string, ShxShape> = new Map();
+  /** Cached shapes for performance. Key is character code. */
+  private shapeCache: Map<number, ShxShape> = new Map();
   /** Shapes data. Key is the char code */
   private shapeData: Map<number, ShxShape> = new Map();
 
@@ -34,13 +33,14 @@ export class ShxShapeParser {
   /**
    * Parses a character's shape
    * @param code - The character code
-   * @param size - The font size
+   * @param height - The font height
+   * @param width - The font width (optional, defaults to height for uniform scaling)
    * @returns The parsed shape or undefined if the character is not found
    */
-  parse(code: number, size: number): ShxShape | undefined {
-    const key = `${code}_${size}`;
-    if (this.shapeCache.has(key)) {
-      return this.shapeCache.get(key);
+  parse(code: number, height: number, width?: number): ShxShape | undefined {
+    if (this.shapeCache.has(code)) {
+      const cachedShape = this.shapeCache.get(code)!;
+      return this.scaleShape(cachedShape, height, width ?? height);
     }
     if (code === 0) {
       return undefined;
@@ -50,29 +50,58 @@ export class ShxShapeParser {
     if (!this.shapeData.has(code)) {
       if (codes[code]) {
         const data = codes[code];
-        const scale = DEFAULT_FONT_SIZE / this.fontData.content.baseUp;
-        textShape = this.parseShape(data, scale);
+        textShape = this.parseShape(data);
         this.shapeData.set(code, textShape);
+        this.shapeCache.set(code, textShape);
       }
     }
     if (this.shapeData.has(code)) {
-      const scale = size / DEFAULT_FONT_SIZE;
       const shape = this.shapeData.get(code) as ShxShape;
-      textShape = new ShxShape(
-        shape.lastPoint?.clone().multiply(scale),
-        shape.polylines.map(line => line.map(point => point.clone().multiply(scale)))
-      );
+      textShape = this.scaleShape(shape, height, width ?? height);
     }
     return textShape;
   }
 
   /**
+   * Scales a shape according to the given height and width
+   * @param shape - The shape to scale
+   * @param height - The target height
+   * @param width - The target width
+   * @returns The scaled shape
+   */
+  private scaleShape(shape: ShxShape, height: number, width: number): ShxShape {
+    const bbox = shape.bbox;
+    const shapeHeight = bbox.maxY - bbox.minY;
+    const shapeWidth = bbox.maxX - bbox.minX;
+
+    // Calculate scale factors based on the shape's actual dimensions
+    const heightScale = shapeHeight > 0 ? height / shapeHeight : 1;
+    const widthScale = shapeWidth > 0 ? width / shapeWidth : 1;
+
+    const scaledLastPoint = shape.lastPoint?.clone();
+    if (scaledLastPoint) {
+      scaledLastPoint.x *= widthScale;
+      scaledLastPoint.y *= heightScale;
+    }
+
+    const scaledPolylines = shape.polylines.map(line =>
+      line.map(point => {
+        const scaledPoint = point.clone();
+        scaledPoint.x *= widthScale;
+        scaledPoint.y *= heightScale;
+        return scaledPoint;
+      })
+    );
+
+    return new ShxShape(scaledLastPoint, scaledPolylines);
+  }
+
+  /**
    * Parses the shape of a character.
    * @param data - The data of the character
-   * @param scale - The scale of the font
    * @returns The parsed shape
    */
-  private parseShape(data: Uint8Array, scale: number): ShxShape {
+  private parseShape(data: Uint8Array): ShxShape {
     let currentPoint = new Point();
     const polylines: Point[][] = [];
     let currentPolyline: Point[] = [];
@@ -85,7 +114,7 @@ export class ShxShapeParser {
       currentPolyline,
       sp,
       isPenDown,
-      scale,
+      scale: 1,
     };
 
     for (let i = 0; i < data.length; i++) {
@@ -181,6 +210,22 @@ export class ShxShapeParser {
         break;
       case 14: // Vertical text
         i = this.skipCode(data, ++i);
+        // According to [special codes reference](https://help.autodesk.com/view/OARX/2023/ENU/?guid=GUID-06832147-16BE-4A66-A6D0-3ADF98DC8228),
+        // If the orientation is vertical, the next code is processed. However, it results in current pos in state changes. Many font characters
+        // in extended big font can be rendered correctly. So I comment out them for now. After I figure out the root cause, then add the following
+        // logic back.
+        //
+        // i++;
+        // if (this.fontData.content.orientation === 'horizontal') {
+        //   i = this.skipCode(data, i);
+        // } else {
+        //   const next = data[i];
+        //   if (next <= 0x0f) {
+        //     i = this.handleSpecialCommand(next, data, i, state);
+        //   } else {
+        //     this.handleVectorCommand(next, state);
+        //   }
+        // }
         break;
     }
 
@@ -293,7 +338,7 @@ export class ShxShapeParser {
     let i = index;
     let subCode = 0;
     let shape;
-    let height = state.scale * this.fontData.content.baseUp;
+    let height = state.scale * this.fontData.content.height;
     let width = height;
     const origin = state.currentPoint.clone();
 
@@ -310,11 +355,42 @@ export class ShxShapeParser {
       case ShxFontType.BIGFONT:
         i++;
         subCode = data[i];
+        // How to parse subcode here?
+        //
+        // - For a non-Unicode font the specification byte following code 7 is a shape number from 1 to 255.
+        // - For a unicode font, code 7 is followed by a Unicode shape number from 1 to 65535. Unicode shape
+        //   numbers should be counted as two bytes.
+        // - For a non-extended big font, I didn't find document to describe it yet.
+        // - For a extended big font, code is alway two bytes 7, 0 so that it can use the subshape feature.
+        //   The format is as follows.
+        // ...
+        // 7,0,primitive#,basepoint-x,basepoint-y,width,height,
+        // ...
+        // ...
+        // 7,0,primitive#,basepoint-x,basepoint-y,width,height,
+        // .
+        // terminator
+        // +---------------+-------+----------+-----------------------------+
+        // | Field         | Value | Byte Size| Description                 |
+        // +---------------+-------+----------+-----------------------------+
+        // | shape-number  | xxxx  | 2 bytes  | Character code              |
+        // | code          | 7,0   | 2 bytes  | Extended font definition    |
+        // | primitive#    | xxxx  | 2 bytes  | Refer to subshape number    |
+        // | basepoint-x   |       | 1 byte   | Primitive X origin          |
+        // | basepoint-y   |       | 1 byte   | Primitive Y origin          |
+        // | width         |       | 1 byte   | Scale of primitive width    |
+        // | height        |       | 1 byte   | Scale of primitive height   |
+        // | terminator    | 0     | 1 byte   | End of shape definition     |
+        // +---------------+-------+----------+-----------------------------+
+        //
+        // Please refer to the following article for more details.
+        // About Defining an Extended Big Font File
+        // https://help.autodesk.com/view/OARX/2023/ENU/?guid=GUID-00ED0CC6-A4BE-4591-93FA-598CC40AA43D
         if (subCode === 0) {
           i++;
-          subCode = data[i++] | (data[i++] << 8);
-          origin.x = data[i++] * state.scale;
-          origin.y = data[i++] * state.scale;
+          subCode = (data[i++] << 8) | data[i++];
+          origin.x = ShxFileReader.byteToSByte(data[i++]) * state.scale;
+          origin.y = ShxFileReader.byteToSByte(data[i++]) * state.scale;
           if (this.fontData.content.isExtended) {
             // Extended big font has seperated width and height value
             width = data[i++] * state.scale;
@@ -326,15 +402,18 @@ export class ShxShapeParser {
         break;
       case ShxFontType.UNIFONT:
         i++;
-        subCode = data[i++] << 8 | data[i++];
+        subCode = (data[i++] << 8) | data[i++];
         break;
     }
 
     if (subCode !== 0) {
-      shape = this.getShapeByCodeWithOffset(subCode, width, height, origin);
+      shape = this.getScaledSubshapeAtInsertPoint(subCode, width, height, origin);
       if (shape) {
         state.polylines.push(...shape.polylines.slice());
-        state.currentPoint = shape.lastPoint ? shape.lastPoint.clone() : origin.clone();
+        // According to Autodesk SHP font specificaiton, I don't know whether the current position
+        // should be changed after inserting one subshape. For now, it looks like that it should
+        // not change current position.
+        // state.currentPoint = shape.lastPoint ? shape.lastPoint.clone() : origin.clone();
       }
     }
 
@@ -588,7 +667,11 @@ export class ShxShapeParser {
               index++;
               const subCode = data[index];
               if (subCode === 0) {
-                index += 5;
+                // Skip primitive#, basepoint-x, basepoint-y, width/height
+                // primitive# is 2 bytes, basepoint-x 1, basepoint-y 1,
+                // extended fonts have both width and height (2 bytes),
+                // non-extended have only height (1 byte)
+                index += this.fontData.content.isExtended ? 6 : 5;
               }
             }
             break;
@@ -642,28 +725,30 @@ export class ShxShapeParser {
     return index;
   }
 
-  private getShapeByCodeWithOffset(
+  private getScaledSubshapeAtInsertPoint(
     code: number,
     width: number,
     height: number,
-    translate: Point
+    insertPoint: Point
   ): ShxShape | undefined {
-    const shape = this.parse(code, height);
-    if (shape) {
-      if (width === height) {
-        return shape.offset(translate);
-      } else {
-        const lastPoint = shape.lastPoint?.clone();
-        if (lastPoint) lastPoint.x *= width / height;
-        const polylines = shape.polylines.map(line => line.map(point => point.clone()));
-        polylines.forEach(line => line.forEach(point => (point.x *= width / height)));
-        return new ShxShape(
-          lastPoint?.add(translate),
-          polylines.map(line => line.map(point => point.add(translate)))
-        );
+    // Obtain the unscaled subshape (local coordinates)
+    let baseShape = this.shapeCache.get(code);
+    if (!baseShape) {
+      const data = this.fontData.content.data[code];
+      if (!data) {
+        return undefined;
       }
+      baseShape = this.parseShape(data);
+      this.shapeData.set(code, baseShape);
+      this.shapeCache.set(code, baseShape);
     }
-    return undefined;
+
+    const bbox = baseShape.bbox;
+
+    // Normalize to left-bottom (0,0) before scaling and inserting its in parent space
+    const normalized = baseShape.offset(new Point(-bbox.minX, -bbox.minY));
+    const scaled = this.scaleShape(normalized, height, width);
+    return scaled.offset(insertPoint);
   }
 
   /**

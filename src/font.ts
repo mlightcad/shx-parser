@@ -44,17 +44,18 @@ export class ShxFont {
    */
   hasChar(code: number): boolean {
     const codes = this.fontData.content.data;
-    return codes[code] !== undefined
+    return codes[code] !== undefined;
   }
 
   /**
    * Gets the shape data for a specific character at a given size.
    * @param code - The character code to get the shape for
-   * @param size - The desired size of the character in drawing units
+   * @param height - The desired height of the character in drawing units
+   * @param width - The desired width of the character in drawing units (optional, defaults to height)
    * @returns The shape data for the character, or undefined if the character is not found in the font
    */
-  public getCharShape(code: number, size: number) {
-    return this.shapeParser.parse(code, size);
+  public getCharShape(code: number, height: number, width?: number) {
+    return this.shapeParser.parse(code, height, width);
   }
 
   /**

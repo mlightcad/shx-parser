@@ -1,6 +1,16 @@
 import { Point } from './point';
 
 /**
+ * Represents a 2D bounding box with minimum and maximum coordinates
+ */
+export interface Box2d {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+/**
  * Represents a shape defined by a collection of polylines and an optional last point.
  * Used to describe the geometry of a character in the SHX font.
  */
@@ -9,6 +19,8 @@ export class ShxShape {
   readonly lastPoint?: Point;
   /** Array of polylines, where each polyline is an array of points */
   readonly polylines: Point[][];
+  /** Cached bounding box to avoid recalculation */
+  private _bbox?: Box2d;
 
   constructor(lastPoint?: Point, polylines: Point[][] = []) {
     this.lastPoint = lastPoint;
@@ -19,12 +31,11 @@ export class ShxShape {
    * Get the bounding box of the shape
    * @returns Bounding box of the shape
    */
-  get bbox(): {
-    minX: number;
-    minY: number;
-    maxX: number;
-    maxY: number;
-  } {
+  get bbox(): Box2d {
+    if (this._bbox) {
+      return this._bbox;
+    }
+
     // Calculate the bounds of the shape
     let minX = Infinity,
       maxX = -Infinity;
@@ -39,7 +50,9 @@ export class ShxShape {
         maxY = Math.max(maxY, point.y);
       });
     });
-    return { minX, minY, maxX, maxY };
+
+    this._bbox = { minX, minY, maxX, maxY };
+    return this._bbox;
   }
 
   /**
@@ -82,8 +95,11 @@ export class ShxShape {
       // Calculate bounds with padding
       const bbox = this.bbox;
       const padding = 0.2; // 20% padding
-      const width = bbox.maxX - bbox.minX;
-      const height = bbox.maxY - bbox.minY;
+      // Compute effective width/height; if one axis is zero, mirror the other
+      const rawWidth = bbox.maxX - bbox.minX;
+      const rawHeight = bbox.maxY - bbox.minY;
+      const width = rawWidth === 0 ? rawHeight : rawWidth;
+      const height = rawHeight === 0 ? rawWidth : rawHeight;
       const minX = bbox.minX - width * padding;
       const maxX = bbox.maxX + width * padding;
       const minY = bbox.minY - height * padding;

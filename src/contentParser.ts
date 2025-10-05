@@ -1,6 +1,8 @@
 import { ShxFileReader } from './fileReader';
 import { ShxFontContentData, ShxFontType } from './fontData';
 
+const DEFAULT_FONT_SIZE = 10;
+
 /**
  * Interface for parsing the content section of a SHX font file.
  * Different font types may have different parsing implementations.
@@ -43,12 +45,12 @@ class ShxShapeContentParser implements ShxContentParser {
             // Parse and skip the null-terminated label at the beginning of the data
             const nulIndex = bytes.indexOf(0x00);
             let startOfBytecode = 0;
-            
+
             // Handle the null-terminated label header
             if (nulIndex >= 0 && nulIndex < bytes.length) {
               startOfBytecode = nulIndex + 1;
             }
-            
+
             // Only add if we got all the bytes and there's actual bytecode data
             if (startOfBytecode < bytes.length) {
               data[item.code] = bytes.subarray(startOfBytecode);
@@ -63,8 +65,8 @@ class ShxShapeContentParser implements ShxContentParser {
       const fontData: ShxFontContentData = {
         data,
         info: '',
-        baseUp: 8, // Default values
-        baseDown: 2,
+        height: DEFAULT_FONT_SIZE,
+        width: DEFAULT_FONT_SIZE,
         orientation: 'horizontal',
         isExtended: false,
       };
@@ -78,8 +80,8 @@ class ShxShapeContentParser implements ShxContentParser {
           if (index >= 0) {
             fontData.info = info.substring(0, index);
             if (index + 3 < infoData.length) {
-              fontData.baseUp = infoData[index + 1];
-              fontData.baseDown = infoData[index + 2];
+              fontData.height = infoData[index + 1];
+              fontData.width = infoData[index + 2];
               fontData.orientation = infoData[index + 3] === 0 ? 'horizontal' : 'vertical';
             }
           }
@@ -95,8 +97,8 @@ class ShxShapeContentParser implements ShxContentParser {
       return {
         data: {},
         info: 'Failed to parse font file',
-        baseUp: 8,
-        baseDown: 2,
+        height: DEFAULT_FONT_SIZE,
+        width: DEFAULT_FONT_SIZE,
         orientation: 'horizontal',
         isExtended: false,
       };
@@ -145,8 +147,8 @@ class ShxBigfontContentParser implements ShxContentParser {
       const fontData: ShxFontContentData = {
         data,
         info: '',
-        baseUp: 8,
-        baseDown: 2,
+        height: DEFAULT_FONT_SIZE,
+        width: DEFAULT_FONT_SIZE,
         orientation: 'horizontal',
         isExtended: false,
       };
@@ -162,14 +164,14 @@ class ShxBigfontContentParser implements ShxContentParser {
             index++;
             if (index + 3 < infoData.length) {
               if (infoData.length - index === 4) {
-                fontData.baseUp = infoData[index++];
-                fontData.baseDown = infoData[index++];
+                fontData.height = infoData[index++];
+                fontData.width = infoData[index++];
                 fontData.orientation = infoData[index++] === 0 ? 'horizontal' : 'vertical';
               } else {
-                fontData.baseUp = infoData[index++];
+                fontData.height = infoData[index++];
                 index++;
                 fontData.orientation = infoData[index++] === 0 ? 'horizontal' : 'vertical';
-                fontData.baseDown = infoData[index++];
+                fontData.width = infoData[index++];
                 fontData.isExtended = true;
               }
             }
@@ -186,8 +188,8 @@ class ShxBigfontContentParser implements ShxContentParser {
       return {
         data: {},
         info: 'Failed to parse font file',
-        baseUp: 8,
-        baseDown: 2,
+        height: DEFAULT_FONT_SIZE,
+        width: DEFAULT_FONT_SIZE,
         orientation: 'horizontal',
         isExtended: false,
       };
@@ -245,8 +247,8 @@ class ShxUnifontContentParser implements ShxContentParser {
       const fontData: ShxFontContentData = {
         data: {},
         info: '',
-        baseUp: 8,
-        baseDown: 2,
+        height: DEFAULT_FONT_SIZE,
+        width: DEFAULT_FONT_SIZE,
         orientation: 'horizontal',
         isExtended: false,
       };
@@ -258,8 +260,8 @@ class ShxUnifontContentParser implements ShxContentParser {
         if (index >= 0) {
           fontData.info = info.substring(0, index);
           if (index + 3 < infoData.length) {
-            fontData.baseUp = infoData[index + 1];
-            fontData.baseDown = infoData[index + 2];
+            fontData.height = infoData[index + 1];
+            fontData.width = infoData[index + 2];
             fontData.orientation = infoData[index + 3] === 0 ? 'horizontal' : 'vertical';
           }
         }
@@ -278,12 +280,12 @@ class ShxUnifontContentParser implements ShxContentParser {
               // Parse and skip the null-terminated label at the beginning of the data
               const nulIndex = bytes.indexOf(0x00);
               let startOfBytecode = 0;
-              
+
               // Handle the null-terminated label header
               if (nulIndex >= 0 && nulIndex < bytes.length) {
                 startOfBytecode = nulIndex + 1;
               }
-              
+
               // Only add if we got all the bytes and there's actual bytecode data
               if (startOfBytecode < bytes.length) {
                 data[code] = bytes.subarray(startOfBytecode);
@@ -304,8 +306,8 @@ class ShxUnifontContentParser implements ShxContentParser {
       return {
         data: {},
         info: 'Failed to parse font file',
-        baseUp: 8,
-        baseDown: 2,
+        height: DEFAULT_FONT_SIZE,
+        width: DEFAULT_FONT_SIZE,
         orientation: 'horizontal',
         isExtended: false,
       };

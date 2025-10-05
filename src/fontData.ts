@@ -24,10 +24,20 @@ export interface ShxFontContentData {
   info: string;
   /** Text orientation (horizontal or vertical) */
   orientation: Orientation;
-  /** Number of pixels above the baseline */
-  baseUp: number;
-  /** Number of pixels below the baseline */
-  baseDown: number;
+  /**
+   * Character height. Used along with character width to indicate the number of units
+   * that define the font characters.
+   */
+  height: number;
+  /**
+   * Character width. Used along with character height to indicate the number of units
+   * that define the font characters. The character-height and character-width values
+   * are used to scale the primitives of the font. In this context, primitives are the
+   * points, lines, polygons, or character strings of the font geometrically oriented
+   * in 2D space. A Kanji character consists of several primitives used repeatedly in
+   * different scales and combinations.
+   */
+  width: number;
   /**
    * Indicates if the font is an extended big font. To reduce the size of composite Kanji
    * characters, you can define an extended Big Font file.

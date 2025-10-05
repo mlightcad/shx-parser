@@ -2,7 +2,6 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![npm version](https://badge.fury.io/js/@mlightcad%2Fshx-parser.svg)](https://badge.fury.io/js/@mlightcad/shx-parser)
-[![CI/CD](https://github.com/shx-parser/shx-parser/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/shx-parser/shx-parser/actions/workflows/ci-cd.yml)
 
 A TypeScript library for parsing AutoCAD SHX font files. It is ported from [this project](https://github.com/yzylovepmn/YFonts.SHX) written by C#. This project fixed many bugs on the original parser. Moreover, support parsing [extended big font](https://help.autodesk.com/view/OARX/2023/ENU/?guid=GUID-00ED0CC6-A4BE-4591-93FA-598CC40AA43D).
 
@@ -17,7 +16,7 @@ If you are interested in the format of SHX font, please refer to [this document]
   - Unifont
 - Shape parsing with performance optimization:
   - On-demand parsing
-  - Shape caching by character code and size
+  - Shape caching by character code
 - Modern TypeScript implementation
 - Object-oriented design
 - Comprehensive test coverage
@@ -70,8 +69,9 @@ const font = new ShxFont(fontFileData);
 
 // Get shape for a character
 const charCode = 65; // ASCII code for 'A'
-const fontSize = 12;
-const shape = font.getCharShape(charCode, fontSize);
+const charHeight = 12;
+// Optional custom width (defaults to height if omitted)
+const shape = font.getCharShape(charCode, charHeight);
 
 if (shape) {
   console.log(shape.polylines); // Array of polylines representing the character
@@ -92,7 +92,7 @@ The main class for working with SHX fonts.
 class ShxFont {
   fontData: ShxFontData;
   constructor(data: ArrayBuffer);
-  getCharShape(charCode: number, size: number): ShxShape | null;
+  getCharShape(charCode: number, height: number, width?: number): ShxShape | null;
   release(): void;
 }
 ```
@@ -103,8 +103,14 @@ Represents a parsed character shape.
 
 ```typescript
 interface ShxShape {
-  polylines: Array<{ x: number; y: number }[]>;  // Array of polyline points
-  lastPoint: { x: number; y: number };           // End point of the shape
+  polylines: Array<{ x: number; y: number }[]>; // Array of polyline points
+  lastPoint?: { x: number; y: number };         // End point of the shape (optional)
+  bbox: {                                       // Bounding box of the shape
+    minX: number;
+    minY: number;
+    maxX: number;
+    maxY: number;
+  };
 }
 ```
 
@@ -120,11 +126,11 @@ interface ShxFontData {
     fileVersion: string;       // Font file version
   };
   content: {
-    data: Record<number, Uint8Array>;  // Character code to bitmap data mapping
+    data: Record<number, Uint8Array>;  // Character code to bytecode data mapping
     info: string;              // Additional font information
     orientation: string;       // Text orientation ('horizontal' | 'vertical')
-    baseUp: number;            // Pixels above baseline
-    baseDown: number;          // Pixels below baseline
+    height: number;            // Character height (units used to scale primitives)
+    width: number;             // Character width (units used to scale primitives)
     isExtended: boolean;       // Flag to indicate if the font is an extended big font
   };
 }
@@ -151,8 +157,8 @@ async function loadFont(filePath: string) {
   console.log('Version:', fontData.header.fileVersion);
   console.log('Info:', fontData.content.info);
   console.log('Orientation:', fontData.content.orientation);
-  console.log('Base Up:', fontData.content.baseUp);
-  console.log('Base Down:', fontData.content.baseDown);
+  console.log('Height:', fontData.content.height);
+  console.log('Width:', fontData.content.width);
   console.log('Number of shapes:', Object.keys(fontData.content.data).length);
   
   return font;
@@ -190,9 +196,10 @@ interface SvgOptions {
 }
 
 function renderTextToSvg(
-  font: ShxFont, 
-  text: string, 
-  size: number, 
+  font: ShxFont,
+  text: string,
+  textHeight: number,
+  textWidth?: number,
   options: SvgOptions = {}
 ): SVGElement {
   const {
@@ -209,14 +216,14 @@ function renderTextToSvg(
   svg.setAttribute('height', height.toString());
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
 
-  const padding = size;
+  const padding = textHeight;
   let currentX = padding;
   let maxHeight = 0;
 
   // Process each character
   for (const char of text) {
     const charCode = char.charCodeAt(0);
-    const shape = font.getCharShape(charCode, size);
+    const shape = font.getCharShape(charCode, textHeight, textWidth);
     
     if (shape) {
       const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -225,8 +232,8 @@ function renderTextToSvg(
         // Auto-fit positioning
         const bbox = shape.bbox;
         const padding = 0.2; // 20% padding
-        const width = bbox.maxX - bbox.minX;
-        const height = bbox.maxY - bbox.minY;
+        const charBBoxWidth = bbox.maxX - bbox.minX;
+        const charBBoxHeight = bbox.maxY - bbox.minY;
         const centerX = (bbox.minX + bbox.maxX) / 2;
         const centerY = (bbox.minY + bbox.maxY) / 2;
         group.setAttribute('transform', `translate(${currentX - centerX}, ${-centerY})`);
@@ -248,12 +255,12 @@ function renderTextToSvg(
 
       // Update position for next character
       if (shape.lastPoint) {
-        currentX += shape.lastPoint.x + size * 0.5;
+        currentX += shape.lastPoint.x + textHeight * 0.5;
       } else {
-        currentX += size;
+        currentX += textHeight;
       }
       
-      maxHeight = Math.max(maxHeight, size);
+      maxHeight = Math.max(maxHeight, textHeight);
     }
   }
 
@@ -270,7 +277,7 @@ async function main() {
     document.body.appendChild(svgElement1);
     
     // Example 2: Auto-fit rendering with custom options
-    const svgElement2 = renderTextToSvg(font, "Hello", 12, {
+    const svgElement2 = renderTextToSvg(font, "Hello", 12, undefined, {
       width: 1000,
       height: 1000,
       strokeWidth: '0.1%',
