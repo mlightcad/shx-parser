@@ -128,8 +128,8 @@ interface ShxFontData {
     data: Record<number, Uint8Array>;  // Character code to bytecode data mapping
     info: string;              // Additional font information
     orientation: string;       // Text orientation ('horizontal' | 'vertical')
-    height: number;            // Character height (units used to scale primitives)
-    width: number;             // Character width (units used to scale primitives)
+    baseUp: number;            // Character height (units used to scale primitives)
+    baseDown: number;          // Character width (units used to scale primitives)
     isExtended: boolean;       // Flag to indicate if the font is an extended big font
   };
 }
@@ -156,8 +156,8 @@ async function loadFont(filePath: string) {
   console.log('Version:', fontData.header.fileVersion);
   console.log('Info:', fontData.content.info);
   console.log('Orientation:', fontData.content.orientation);
-  console.log('Height:', fontData.content.height);
-  console.log('Width:', fontData.content.width);
+  console.log('Height:', fontData.content.baseUp);
+  console.log('Width:', fontData.content.baseDown);
   console.log('Number of shapes:', Object.keys(fontData.content.data).length);
   
   return font;
