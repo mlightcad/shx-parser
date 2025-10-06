@@ -65,8 +65,8 @@ class ShxShapeContentParser implements ShxContentParser {
       const fontData: ShxFontContentData = {
         data,
         info: '',
-        height: DEFAULT_FONT_SIZE,
-        width: DEFAULT_FONT_SIZE,
+        baseUp: DEFAULT_FONT_SIZE,
+        baseDown: DEFAULT_FONT_SIZE,
         orientation: 'horizontal',
         isExtended: false,
       };
@@ -80,8 +80,8 @@ class ShxShapeContentParser implements ShxContentParser {
           if (index >= 0) {
             fontData.info = info.substring(0, index);
             if (index + 3 < infoData.length) {
-              fontData.height = infoData[index + 1];
-              fontData.width = infoData[index + 2];
+              fontData.baseUp = infoData[index + 1];
+              fontData.baseDown = infoData[index + 2];
               fontData.orientation = infoData[index + 3] === 0 ? 'horizontal' : 'vertical';
             }
           }
@@ -97,8 +97,8 @@ class ShxShapeContentParser implements ShxContentParser {
       return {
         data: {},
         info: 'Failed to parse font file',
-        height: DEFAULT_FONT_SIZE,
-        width: DEFAULT_FONT_SIZE,
+        baseUp: DEFAULT_FONT_SIZE,
+        baseDown: DEFAULT_FONT_SIZE,
         orientation: 'horizontal',
         isExtended: false,
       };
@@ -147,8 +147,8 @@ class ShxBigfontContentParser implements ShxContentParser {
       const fontData: ShxFontContentData = {
         data,
         info: '',
-        height: DEFAULT_FONT_SIZE,
-        width: DEFAULT_FONT_SIZE,
+        baseUp: DEFAULT_FONT_SIZE,
+        baseDown: DEFAULT_FONT_SIZE,
         orientation: 'horizontal',
         isExtended: false,
       };
@@ -164,14 +164,14 @@ class ShxBigfontContentParser implements ShxContentParser {
             index++;
             if (index + 3 < infoData.length) {
               if (infoData.length - index === 4) {
-                fontData.height = infoData[index++];
-                fontData.width = infoData[index++];
+                fontData.baseUp = infoData[index++];
+                fontData.baseDown = infoData[index++];
                 fontData.orientation = infoData[index++] === 0 ? 'horizontal' : 'vertical';
               } else {
-                fontData.height = infoData[index++];
+                fontData.baseUp = infoData[index++];
                 index++;
                 fontData.orientation = infoData[index++] === 0 ? 'horizontal' : 'vertical';
-                fontData.width = infoData[index++];
+                fontData.baseDown = infoData[index++];
                 fontData.isExtended = true;
               }
             }
@@ -188,8 +188,8 @@ class ShxBigfontContentParser implements ShxContentParser {
       return {
         data: {},
         info: 'Failed to parse font file',
-        height: DEFAULT_FONT_SIZE,
-        width: DEFAULT_FONT_SIZE,
+        baseUp: DEFAULT_FONT_SIZE,
+        baseDown: DEFAULT_FONT_SIZE,
         orientation: 'horizontal',
         isExtended: false,
       };
@@ -247,8 +247,8 @@ class ShxUnifontContentParser implements ShxContentParser {
       const fontData: ShxFontContentData = {
         data: {},
         info: '',
-        height: DEFAULT_FONT_SIZE,
-        width: DEFAULT_FONT_SIZE,
+        baseUp: DEFAULT_FONT_SIZE,
+        baseDown: DEFAULT_FONT_SIZE,
         orientation: 'horizontal',
         isExtended: false,
       };
@@ -260,8 +260,8 @@ class ShxUnifontContentParser implements ShxContentParser {
         if (index >= 0) {
           fontData.info = info.substring(0, index);
           if (index + 3 < infoData.length) {
-            fontData.height = infoData[index + 1];
-            fontData.width = infoData[index + 2];
+            fontData.baseUp = infoData[index + 1];
+            fontData.baseDown = infoData[index + 2];
             fontData.orientation = infoData[index + 3] === 0 ? 'horizontal' : 'vertical';
           }
         }
@@ -306,8 +306,8 @@ class ShxUnifontContentParser implements ShxContentParser {
       return {
         data: {},
         info: 'Failed to parse font file',
-        height: DEFAULT_FONT_SIZE,
-        width: DEFAULT_FONT_SIZE,
+        baseUp: DEFAULT_FONT_SIZE,
+        baseDown: DEFAULT_FONT_SIZE,
         orientation: 'horizontal',
         isExtended: false,
       };
