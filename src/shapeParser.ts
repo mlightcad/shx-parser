@@ -4,6 +4,17 @@ import { Arc } from './arc';
 import { ShxFileReader } from './fileReader';
 import { ShxShape } from './shape';
 
+/**
+ * Scaling options for shape parsing
+ */
+export interface ScalingOptions {
+  /** Scale by a uniform factor */
+  factor?: number;
+  /** Scale by specific height and width */
+  height?: number;
+  width?: number;
+}
+
 const CIRCLE_SPAN = Math.PI / 18;
 
 /**
@@ -31,35 +42,68 @@ export class ShxShapeParser {
   }
 
   /**
-   * Parses a character's shape
+   * Parses a character's shape with the given font size.
    * @param code - The character code
-   * @param height - The font height
-   * @param width - The font width (optional, defaults to height for uniform scaling)
+   * @param size - The font size
    * @returns The parsed shape or undefined if the character is not found
    */
-  parse(code: number, height: number, width?: number): ShxShape | undefined {
-    if (this.shapeCache.has(code)) {
-      const cachedShape = this.shapeCache.get(code)!;
-      return this.scaleShape(cachedShape, height, width ?? height);
-    }
+  getCharShape(code: number, size: number): ShxShape | undefined {
+    const scale = size / this.fontData.content.height;
+    return this.parseAndScale(code, { factor: scale });
+  }
+
+  /**
+   * Parses a character's shape with scaling options
+   * @param code - The character code
+   * @param options - Scaling options (factor or height/width)
+   * @returns The parsed shape or undefined if the character is not found
+   */
+  private parseAndScale(code: number, options: ScalingOptions): ShxShape | undefined {
     if (code === 0) {
       return undefined;
     }
-    const codes = this.fontData.content.data;
-    let textShape;
-    if (!this.shapeData.has(code)) {
+
+    // Get or parse the base shape
+    let baseShape: ShxShape | undefined;
+    if (this.shapeCache.has(code)) {
+      baseShape = this.shapeCache.get(code)!;
+    } else {
+      const codes = this.fontData.content.data;
       if (codes[code]) {
         const data = codes[code];
-        textShape = this.parseShape(data);
-        this.shapeData.set(code, textShape);
-        this.shapeCache.set(code, textShape);
+        baseShape = this.parseShape(data);
+        this.shapeData.set(code, baseShape);
+        this.shapeCache.set(code, baseShape);
       }
     }
-    if (this.shapeData.has(code)) {
-      const shape = this.shapeData.get(code) as ShxShape;
-      textShape = this.scaleShape(shape, height, width ?? height);
+
+    if (!baseShape) {
+      return undefined;
     }
-    return textShape;
+
+    // Apply scaling based on options
+    if (options.factor !== undefined) {
+      return this.scaleShapeByFactor(baseShape, options.factor);
+    } else if (options.height !== undefined) {
+      const targetWidth = options.width ?? options.height;
+      return this.scaleShapeByHeightAndWidth(baseShape, options.height, targetWidth);
+    } else {
+      // No scaling options provided, return original shape
+      return baseShape;
+    }
+  }
+
+  /**
+   * Scales a shape according to the given scale factor
+   * @param shape - The shape to scale
+   * @param factor - The scale factor
+   * @returns The scaled shape
+   */
+  private scaleShapeByFactor(shape: ShxShape, factor: number): ShxShape {
+    return new ShxShape(
+      shape.lastPoint?.clone().multiply(factor),
+      shape.polylines.map(line => line.map(point => point.clone().multiply(factor)))
+    );
   }
 
   /**
@@ -69,7 +113,7 @@ export class ShxShapeParser {
    * @param width - The target width
    * @returns The scaled shape
    */
-  private scaleShape(shape: ShxShape, height: number, width: number): ShxShape {
+  private scaleShapeByHeightAndWidth(shape: ShxShape, height: number, width: number): ShxShape {
     const bbox = shape.bbox;
     const shapeHeight = bbox.maxY - bbox.minY;
     const shapeWidth = bbox.maxX - bbox.minX;
@@ -747,7 +791,7 @@ export class ShxShapeParser {
 
     // Normalize to left-bottom (0,0) before scaling and inserting its in parent space
     const normalized = baseShape.offset(new Point(-bbox.minX, -bbox.minY));
-    const scaled = this.scaleShape(normalized, height, width);
+    const scaled = this.scaleShapeByHeightAndWidth(normalized, height, width);
     return scaled.offset(insertPoint);
   }
 

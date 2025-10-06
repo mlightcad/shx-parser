@@ -69,9 +69,8 @@ const font = new ShxFont(fontFileData);
 
 // Get shape for a character
 const charCode = 65; // ASCII code for 'A'
-const charHeight = 12;
-// Optional custom width (defaults to height if omitted)
-const shape = font.getCharShape(charCode, charHeight);
+const fontSize = 12;
+const shape = font.getCharShape(charCode, fontSize);
 
 if (shape) {
   console.log(shape.polylines); // Array of polylines representing the character
@@ -92,7 +91,7 @@ The main class for working with SHX fonts.
 class ShxFont {
   fontData: ShxFontData;
   constructor(data: ArrayBuffer);
-  getCharShape(charCode: number, height: number, width?: number): ShxShape | null;
+  getCharShape(charCode: number, size: number): ShxShape | null;
   release(): void;
 }
 ```
@@ -198,8 +197,7 @@ interface SvgOptions {
 function renderTextToSvg(
   font: ShxFont,
   text: string,
-  textHeight: number,
-  textWidth?: number,
+  fontSize: number,
   options: SvgOptions = {}
 ): SVGElement {
   const {
@@ -216,14 +214,14 @@ function renderTextToSvg(
   svg.setAttribute('height', height.toString());
   svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
 
-  const padding = textHeight;
+  const padding = fontSize;
   let currentX = padding;
   let maxHeight = 0;
 
   // Process each character
   for (const char of text) {
     const charCode = char.charCodeAt(0);
-    const shape = font.getCharShape(charCode, textHeight, textWidth);
+    const shape = font.getCharShape(charCode, fontSize);
     
     if (shape) {
       const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -255,12 +253,12 @@ function renderTextToSvg(
 
       // Update position for next character
       if (shape.lastPoint) {
-        currentX += shape.lastPoint.x + textHeight * 0.5;
+        currentX += shape.lastPoint.x + fontSize * 0.5;
       } else {
-        currentX += textHeight;
+        currentX += fontSize;
       }
       
-      maxHeight = Math.max(maxHeight, textHeight);
+      maxHeight = Math.max(maxHeight, fontSize);
     }
   }
 
@@ -277,7 +275,7 @@ async function main() {
     document.body.appendChild(svgElement1);
     
     // Example 2: Auto-fit rendering with custom options
-    const svgElement2 = renderTextToSvg(font, "Hello", 12, undefined, {
+    const svgElement2 = renderTextToSvg(font, "Hello", 12, {
       width: 1000,
       height: 1000,
       strokeWidth: '0.1%',
