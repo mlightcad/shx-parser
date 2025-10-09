@@ -7,6 +7,8 @@ A TypeScript library for parsing AutoCAD SHX font files. It is ported from [this
 
 If you are interested in the format of SHX font, please refer to [this document](https://help.autodesk.com/view/OARX/2023/ENU/?guid=GUID-06832147-16BE-4A66-A6D0-3ADF98DC8228).
 
+[**🌐 Live Demo**](https://mlightcad.gitlab.io/shx-parser/)
+
 ## Features
 
 - Parse SHX font files and extract font data
@@ -40,7 +42,7 @@ yarn add @mlightcad/shx-parser
 
 ## Demo app
 
-The [demo app](https://mlight-lee.github.io/shx-parser/) is provided with a web-based interface for viewing and exploring SHX font files with the following features:
+The [demo app](https://mlightcad.gitlab.io/shx-parser/) is provided with a web-based interface for viewing and exploring SHX font files with the following features:
 
 - **Dual Loading Modes**:
   - Upload local SHX files
@@ -128,8 +130,8 @@ interface ShxFontData {
     data: Record<number, Uint8Array>;  // Character code to bytecode data mapping
     info: string;              // Additional font information
     orientation: string;       // Text orientation ('horizontal' | 'vertical')
-    baseUp: number;            // Character height (units used to scale primitives)
-    baseDown: number;          // Character width (units used to scale primitives)
+    height: number;            // Character height (units used to scale primitives)
+    width: number;             // Character width (units used to scale primitives)
     isExtended: boolean;       // Flag to indicate if the font is an extended big font
   };
 }
@@ -156,8 +158,8 @@ async function loadFont(filePath: string) {
   console.log('Version:', fontData.header.fileVersion);
   console.log('Info:', fontData.content.info);
   console.log('Orientation:', fontData.content.orientation);
-  console.log('Height:', fontData.content.baseUp);
-  console.log('Width:', fontData.content.baseDown);
+  console.log('Height:', fontData.content.height);
+  console.log('Width:', fontData.content.width);
   console.log('Number of shapes:', Object.keys(fontData.content.data).length);
   
   return font;
@@ -311,5 +313,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 If you have any questions or run into issues, please:
-1. Check the [GitHub Issues](https://github.com/shx-parser/shx-parser/issues) page
+1. Check the [GitHub Issues](https://gitlab.com/mlightcad/shx-parser/-/issues) page
 2. Open a new issue if your problem hasn't been reported yet

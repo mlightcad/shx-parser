@@ -48,7 +48,7 @@ export class ShxShapeParser {
    * @returns The parsed shape or undefined if the character is not found
    */
   getCharShape(code: number, size: number): ShxShape | undefined {
-    const scale = size / this.fontData.content.baseUp;
+    const scale = size / this.fontData.content.height;
     return this.parseAndScale(code, { factor: scale });
   }
 
@@ -382,7 +382,7 @@ export class ShxShapeParser {
     let i = index;
     let subCode = 0;
     let shape;
-    let height = state.scale * this.fontData.content.baseUp;
+    let height = state.scale * this.fontData.content.height;
     let width = height;
     const origin = state.currentPoint.clone();
 

@@ -28,7 +28,7 @@ export interface ShxFontContentData {
    * Character height. Used along with character width to indicate the number of units
    * that define the font characters.
    */
-  baseUp: number;
+  height: number;
   /**
    * Character width. Used along with character height to indicate the number of units
    * that define the font characters. The character-height and character-width values
@@ -36,19 +36,11 @@ export interface ShxFontContentData {
    * points, lines, polygons, or character strings of the font geometrically oriented
    * in 2D space. A Kanji character consists of several primitives used repeatedly in
    * different scales and combinations.
-   *
-   * Notes:
-   * I know the property name is really confusing. However, we keep it as is to avoid
-   * breaking he font cache data format.
    */
-  baseDown: number;
+  width: number;
   /**
    * Indicates if the font is an extended big font. To reduce the size of composite Kanji
    * characters, you can define an extended Big Font file.
-   *
-   * Notes:
-   * I know the property name is really confusing. However, we keep it as is to avoid
-   * breaking he font cache data format.
    */
   isExtended: boolean;
 }
