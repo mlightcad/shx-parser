@@ -291,8 +291,9 @@
                 this.modalShape = document.getElementById('modalShape');
                 this.modalCharacterInfo = document.getElementById('modalCharacterInfo');
                 this.font = null;
-                this.fontLibraryUrl = 'https://mlightcad.gitlab.io/cad-data/fonts/fonts.json';
-                this.fontBaseUrl = 'https://mlightcad.gitlab.io/cad-data/fonts/';
+                const baseUrl = 'https://mlightcad.gitlab.io/cad-data/';
+                this.fontBaseUrl = baseUrl + 'fonts/';
+                this.fontLibraryUrl = this.fontBaseUrl + 'fonts.json';
                 this.allCharacterCells = new Map(); // Store all character cells
 
                 this.init();
