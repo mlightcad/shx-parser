@@ -24,6 +24,10 @@ export interface ShxFontContentData {
   info: string;
   /** Text orientation (horizontal or vertical) */
   orientation: Orientation;
+  /** Number of pixels above the baseline */
+  baseUp: number;
+  /** Number of pixels below the baseline */
+  baseDown: number;
   /**
    * Character height. Used along with character width to indicate the number of units
    * that define the font characters.

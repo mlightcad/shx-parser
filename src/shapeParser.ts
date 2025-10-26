@@ -787,10 +787,8 @@ export class ShxShapeParser {
       this.shapeCache.set(code, baseShape);
     }
 
-    const bbox = baseShape.bbox;
-
     // Normalize to left-bottom (0,0) before scaling and inserting its in parent space
-    const normalized = baseShape.offset(new Point(-bbox.minX, -bbox.minY));
+    const normalized = baseShape.normalizeToOrigin(true);
     const scaled = this.scaleShapeByHeightAndWidth(normalized, height, width);
     return scaled.offset(insertPoint);
   }
