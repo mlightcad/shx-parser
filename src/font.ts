@@ -1,5 +1,5 @@
 import { ShxFileReader } from './fileReader';
-import { ShxFontData } from './fontData';
+import { ShxFontData, ShxFontType } from './fontData';
 import { ShxHeaderParser } from './headerParser';
 import { ShxContentParserFactory } from './contentParser';
 import { ShxShapeParser } from './shapeParser';
@@ -54,7 +54,11 @@ export class ShxFont {
    * @returns The shape data for the character, or undefined if the character is not found in the font
    */
   public getCharShape(code: number, size: number) {
-    return this.shapeParser.getCharShape(code, size);
+    let shape = this.shapeParser.getCharShape(code, size);
+    if (shape && this.fontData.header.fontType === ShxFontType.BIGFONT) {
+      shape = shape.normalizeToOrigin();
+    }
+    return shape;
   }
 
   /**

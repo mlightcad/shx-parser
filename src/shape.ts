@@ -70,8 +70,26 @@ export class ShxShape {
     } else {
       this.lastPoint?.add(p);
       this.polylines.forEach(polyline => polyline.forEach(point => point.add(p)));
+      if (this._bbox) {
+        this._bbox.maxX += p.x;
+        this._bbox.minX += p.x;
+        this._bbox.maxY += p.y;
+        this._bbox.minY += p.y;
+      }
       return this;
     }
+  }
+
+  /**
+   * Normalizes a shape so that its bounding box’s bottom-left corner moves to the origin (0,0).
+   * It doesn’t change the size or orientation, only repositions the shape.
+   * @param isNewInstance Whether to return a new instance of the shape or modify the current instance
+   * @returns The offset shape
+   */
+  normalizeToOrigin(isNewInstance = false) {
+    const bbox = this.bbox;
+    // Normalize to left-bottom (0,0)
+    return this.offset(new Point(-bbox.minX, -bbox.minY), isNewInstance);
   }
 
   /**
