@@ -170,16 +170,20 @@ class ShxBigfontContentParser implements ShxContentParser {
           if (index >= 0) {
             fontData.info = info.text;
             index++;
-            if (index + 2 < infoData.length) {
-              if (infoData.length - index > 3) {
+            if (index + 3 < infoData.length) {
+              if (infoData.length - index > 4) {
                 fontData.height = infoData[index++];
                 index++;
                 fontData.orientation = infoData[index++] === 0 ? 'horizontal' : 'vertical';
                 fontData.width = infoData[index++];
+                fontData.baseUp = fontData.height;
+                fontData.baseDown = 0;
                 fontData.isExtended = true;
               } else {
-                fontData.height = infoData[index++];
-                fontData.width = infoData[index++];
+                fontData.baseUp = infoData[index++];
+                fontData.baseDown = infoData[index++];
+                fontData.height = fontData.baseDown + fontData.baseUp;
+                fontData.width = fontData.height;
                 fontData.orientation = infoData[index] === 0 ? 'horizontal' : 'vertical';
               }
             }
@@ -210,7 +214,7 @@ class ShxBigfontContentParser implements ShxContentParser {
     let out = '';
     let i = 0;
     while (i < array.length) {
-      const c = array[i++];
+      const c = array[i];
       switch (c >> 4) {
         case 0:
         case 1:
@@ -239,6 +243,7 @@ class ShxBigfontContentParser implements ShxContentParser {
       }
       // Stop continue to convert string if found null
       if (out.charCodeAt(out.length - 1) === 0) break;
+      i++;
     }
     return { text: out, pos: i };
   }
