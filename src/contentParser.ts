@@ -4,6 +4,13 @@ import { ShxFontContentData, ShxFontType } from './fontData';
 const DEFAULT_FONT_SIZE = 10;
 
 /**
+ * Detecting the termination symbol of a string.
+ * 
+ * ['\r', '\n', '\x00']
+ */
+const TERMINATING_CHARS = [0x0D, 0x0A, 0x00]
+
+/**
  * Interface for parsing the content section of a SHX font file.
  * Different font types may have different parsing implementations.
  */
@@ -42,19 +49,7 @@ class ShxShapeContentParser implements ShxContentParser {
         try {
           const bytes = reader.readBytes(item.length);
           if (bytes.length === item.length) {
-            // Parse and skip the null-terminated label at the beginning of the data
-            const nulIndex = bytes.indexOf(0x00);
-            let startOfBytecode = 0;
-
-            // Handle the null-terminated label header
-            if (nulIndex >= 0 && nulIndex < bytes.length) {
-              startOfBytecode = nulIndex + 1;
-            }
-
-            // Only add if we got all the bytes and there's actual bytecode data
-            if (startOfBytecode < bytes.length) {
-              data[item.code] = bytes.subarray(startOfBytecode);
-            }
+            data[item.code] = bytes;
           }
         } catch {
           console.warn(`Failed to read shape data for code ${item.code}`);
@@ -78,7 +73,7 @@ class ShxShapeContentParser implements ShxContentParser {
         const infoData = data[0];
         try {
           const info = new TextDecoder().decode(infoData);
-          let index = info.indexOf('\x00');
+          let index = infoData.findIndex((v) => TERMINATING_CHARS.includes(v))
           if (index >= 0) {
             fontData.info = info.substring(0, index);
             if (index + 3 < infoData.length) {
