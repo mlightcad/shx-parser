@@ -73,6 +73,8 @@
             display: grid;
             grid-template-columns: auto 1fr;
             gap: 8px;
+
+            line-height: 1em;
         }
         .font-info-label {
             font-weight: bold;
@@ -246,6 +248,8 @@
                 <div id="fileVersion" class="font-info-value"></div>
                 <div class="font-info-label">Number of Characters:</div>
                 <div id="charCount" class="font-info-value"></div>
+                <div class="font-info-label">Font Additional Info:</div>
+                <div id="fontAdditionalInfo" class="font-info-value"></div>
             </div>
         </div>
         
@@ -427,6 +431,7 @@
                 document.getElementById('fontType').textContent = header.fontType;
                 document.getElementById('fileVersion').textContent = header.fileVersion;
                 document.getElementById('charCount').textContent = Object.keys(content.data).length;
+                document.getElementById('fontAdditionalInfo').textContent = content.info
             }
 
             createCharacterCell(code, shape) {
