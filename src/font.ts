@@ -56,9 +56,10 @@ export class ShxFont {
   public getCharShape(code: number, size: number) {
     let shape = this.shapeParser.getCharShape(code, size);
     if (shape && this.fontData.header.fontType === ShxFontType.BIGFONT) {
-      // Only normalize baseline-aligned glyphs. Top/center-aligned characters
-      // (e.g. "一", quotation marks) must keep their original vertical position.
-      if (shape.bbox.minY <= size * 0.2) {
+      // Normalize baseline-aligned and mid-cell body glyphs to the origin.
+      // Top/center punctuation (e.g. “一”, quotation marks) sit in the upper
+      // half of the cell and must keep their vertical position.
+      if (shape.bbox.minY <= size * 0.5) {
         shape = shape.normalizeToOrigin();
       }
     }
