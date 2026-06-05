@@ -3,12 +3,15 @@ name: CI/CD Pipeline
 on:
   push:
     branches: [ main ]
+    tags:
+      - 'v*'
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -17,17 +20,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v2
+        uses: actions/checkout@v6
         with:
-          version: 9
-      
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+
       # Cache node_modules
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: 'pnpm'
+          registry-url: https://registry.npmjs.org
        
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -41,20 +45,32 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Publish package to npm
+        if: startsWith(github.ref, 'refs/tags/')
+        run: pnpm publish:package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
+
   deploy:
     needs: [ci]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
-      - uses: pnpm/action-setup@v2
-        with:
-          version: 9
-      
+      - uses: pnpm/action-setup@v6
+
       # Cache node_modules
-      - uses: actions/setup-node@v3
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: 'pnpm'
@@ -66,13 +82,13 @@ jobs:
         run: pnpm example
 
       - name: Setup Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: './examples/'
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

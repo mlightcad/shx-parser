@@ -22,7 +22,9 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json}\"",
     "lint": "eslint \"src/**/*.{ts,tsx,js,jsx}\"",
-    "lint:fix": "eslint \"src/**/*.{ts,tsx,js,jsx}\" --fix"
+    "lint:fix": "eslint \"src/**/*.{ts,tsx,js,jsx}\" --fix",
+    "release": "node tools/release.mjs",
+    "publish:package": "pnpm publish --no-git-checks --access public"
   },
   "keywords": [
     "autocad",
@@ -41,6 +43,7 @@
   "bugs": {
     "url": "https://github.com/mlightcad/shx-parser/-/issues"
   },
+  "packageManager": "pnpm@10.33.4",
   "devDependencies": {
     "@eslint/js": "^9.26.0",
     "@types/jest": "^29.5.12",
