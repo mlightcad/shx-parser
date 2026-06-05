@@ -143,14 +143,21 @@ export class ShxShapeParser {
   /**
    * Parses the shape of a character.
    * @param data - The data of the character
+   * @param options - Optional parse settings
    * @returns The parsed shape
    */
-  private parseShape(data: Uint8Array): ShxShape {
+  private parseShape(
+    data: Uint8Array,
+    options: { initialPenDown?: boolean } = {}
+  ): ShxShape {
     let currentPoint = new Point();
     const polylines: Point[][] = [];
     let currentPolyline: Point[] = [];
     const sp: Point[] = [];
-    let isPenDown = false;
+    let isPenDown = options.initialPenDown ?? false;
+    if (isPenDown) {
+      currentPolyline.push(currentPoint.clone());
+    }
 
     const state = {
       currentPoint,
@@ -200,6 +207,9 @@ export class ShxShapeParser {
 
     switch (command) {
       case 0: // End of shape definition
+        if (state.currentPolyline.length > 1) {
+          state.polylines.push(state.currentPolyline.slice());
+        }
         state.currentPolyline = [];
         state.isPenDown = false;
         break;
@@ -252,24 +262,11 @@ export class ShxShapeParser {
       case 13: // Multiple bulge arcs
         i = this.handleMultipleBulgeArcs(data, i, state);
         break;
-      case 14: // Vertical text
+      case 14: // Vertical-only command
+        // https://help.autodesk.com/view/OARX/2023/ENU/?guid=GUID-06832147-16BE-4A66-A6D0-3ADF98DC8228
+        // Horizontal fonts skip the next command. Vertical fonts (e.g. amgdt.shx) execute it.
+        // Reverted to skip-only for now — executing the next command regresses other amgdt glyphs.
         i = this.skipCode(data, ++i);
-        // According to [special codes reference](https://help.autodesk.com/view/OARX/2023/ENU/?guid=GUID-06832147-16BE-4A66-A6D0-3ADF98DC8228),
-        // If the orientation is vertical, the next code is processed. However, it results in current pos in state changes. Many font characters
-        // in extended big font can be rendered correctly. So I comment out them for now. After I figure out the root cause, then add the following
-        // logic back.
-        //
-        // i++;
-        // if (this.fontData.content.orientation === 'horizontal') {
-        //   i = this.skipCode(data, i);
-        // } else {
-        //   const next = data[i];
-        //   if (next <= 0x0f) {
-        //     i = this.handleSpecialCommand(next, data, i, state);
-        //   } else {
-        //     this.handleVectorCommand(next, state);
-        //   }
-        // }
         break;
     }
 
@@ -451,23 +448,28 @@ export class ShxShapeParser {
     }
 
     if (subCode !== 0) {
-      shape = this.getScaledSubshapeAtInsertPoint(subCode, width, height, origin);
-      if (shape) {
+      shape = this.getScaledSubshapeAtInsertPoint(
+        subCode,
+        width,
+        height,
+        origin,
+        state.isPenDown
+      );
+      if (shape && shape.polylines.some(line => line.length >= 2)) {
         state.polylines.push(...shape.polylines.slice());
-        // According to Autodesk SHP font specificaiton, I don't know whether the current position
-        // should be changed after inserting one subshape. For now, it looks like that it should
-        // not change current position.
-        // state.currentPoint = shape.lastPoint ? shape.lastPoint.clone() : origin.clone();
+        if (shape.lastPoint) {
+          state.currentPoint = shape.lastPoint.clone();
+        }
+        // Resume parent shape drawing after a successful subshape insert.
+        state.currentPolyline = [];
+        if (state.isPenDown) {
+          state.currentPolyline.push(state.currentPoint.clone());
+        }
       }
     }
 
-    state.currentPolyline = [];
-    // TBD: Not sure whether pen down should be reset here.
-    // According to special code reference in AutoCAD help document.
-    // https://help.autodesk.com/view/OARX/2023/ENU/?guid=GUID-06832147-16BE-4A66-A6D0-3ADF98DC8228
-    // It mentions draw mode is not reset for the new shape.
-    // When the subshape is complete, drawing the current shape resumes.
-    // state.isPenDown = false;
+    // Keep pen state and currentPolyline when the subshape is missing or empty.
+    // amgdt.shx code 132 (%%132) calls a blank subshape then continues with vectors.
     return i;
   }
 
@@ -773,18 +775,29 @@ export class ShxShapeParser {
     code: number,
     width: number,
     height: number,
-    insertPoint: Point
+    insertPoint: Point,
+    inheritParentPen = false
   ): ShxShape | undefined {
-    // Obtain the unscaled subshape (local coordinates)
-    let baseShape = this.shapeCache.get(code);
-    if (!baseShape) {
+    // Subshape stroke visibility can depend on the parent pen state (amgdt %%132).
+    // Do not reuse the top-level glyph cache when inheriting pen state.
+    let baseShape: ShxShape | undefined;
+    if (inheritParentPen) {
       const data = this.fontData.content.data[code];
       if (!data) {
         return undefined;
       }
-      baseShape = this.parseShape(data);
-      this.shapeData.set(code, baseShape);
-      this.shapeCache.set(code, baseShape);
+      baseShape = this.parseShape(data, { initialPenDown: true });
+    } else {
+      baseShape = this.shapeCache.get(code);
+      if (!baseShape) {
+        const data = this.fontData.content.data[code];
+        if (!data) {
+          return undefined;
+        }
+        baseShape = this.parseShape(data);
+        this.shapeData.set(code, baseShape);
+        this.shapeCache.set(code, baseShape);
+      }
     }
 
     // Normalize to left-bottom (0,0) before scaling and inserting its in parent space
