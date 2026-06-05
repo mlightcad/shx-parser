@@ -8,7 +8,26 @@ const DEFAULT_FONT_SIZE = 10;
  * 
  * ['\r', '\n', '\x00']
  */
-const TERMINATING_CHARS = [0x0D, 0x0A, 0x00]
+const TERMINATING_CHARS = [0x0D, 0x0A, 0x00];
+
+/**
+ * Splits a compiled shape entry into its optional name label and bytecode payload.
+ * Shape files store an uppercase name followed by a null byte before the bytecode.
+ * Text-font entries use a leading null byte when no name is stored.
+ */
+export function splitShapeNameAndBytecode(bytes: Uint8Array): {
+  name: string | null;
+  bytecode: Uint8Array;
+} {
+  const nulIndex = bytes.indexOf(0x00);
+  if (nulIndex < 0) {
+    return { name: null, bytecode: bytes };
+  }
+
+  const name =
+    nulIndex > 0 ? new TextDecoder('ascii').decode(bytes.subarray(0, nulIndex)) : null;
+  return { name, bytecode: bytes.subarray(nulIndex + 1) };
+}
 
 /**
  * Interface for parsing the content section of a SHX font file.
@@ -44,21 +63,38 @@ class ShxShapeContentParser implements ShxContentParser {
         }
       }
 
-      const data: Record<number, Uint8Array> = {};
+      const rawData: Record<number, Uint8Array> = {};
       for (const item of items) {
         try {
           const bytes = reader.readBytes(item.length);
           if (bytes.length === item.length) {
-            data[item.code] = bytes;
+            rawData[item.code] = bytes;
           }
         } catch {
           console.warn(`Failed to read shape data for code ${item.code}`);
         }
       }
 
+      const data: Record<number, Uint8Array> = {};
+      const names: Record<string, number> = {};
+      for (const [codeKey, bytes] of Object.entries(rawData)) {
+        const code = Number(codeKey);
+        if (code === 0) {
+          data[code] = bytes;
+          continue;
+        }
+
+        const { name, bytecode } = splitShapeNameAndBytecode(bytes);
+        data[code] = bytecode;
+        if (name) {
+          names[name] = code;
+        }
+      }
+
       // Set default values first
       const fontData: ShxFontContentData = {
         data,
+        names: Object.keys(names).length > 0 ? names : undefined,
         info: '',
         baseUp: 8,
         baseDown: 2,
@@ -286,6 +322,7 @@ class ShxUnifontContentParser implements ShxContentParser {
       }
 
       const data: Record<number, Uint8Array> = {};
+      const names: Record<string, number> = {};
       for (let i = 0; i < count - 1; i++) {
         try {
           const code = reader.readUint16();
@@ -293,18 +330,14 @@ class ShxUnifontContentParser implements ShxContentParser {
           if (length > 0) {
             const bytes = reader.readBytes(length);
             if (bytes.length === length) {
-              // Parse and skip the null-terminated label at the beginning of the data
-              const nulIndex = bytes.indexOf(0x00);
-              let startOfBytecode = 0;
-
-              // Handle the null-terminated label header
-              if (nulIndex >= 0 && nulIndex < bytes.length) {
-                startOfBytecode = nulIndex + 1;
-              }
+              const { name, bytecode } = splitShapeNameAndBytecode(bytes);
 
               // Only add if we got all the bytes and there's actual bytecode data
-              if (startOfBytecode < bytes.length) {
-                data[code] = bytes.subarray(startOfBytecode);
+              if (bytecode.length > 0) {
+                data[code] = bytecode;
+                if (name) {
+                  names[name] = code;
+                }
               }
             }
           }
@@ -315,6 +348,7 @@ class ShxUnifontContentParser implements ShxContentParser {
       }
 
       fontData.data = data;
+      fontData.names = Object.keys(names).length > 0 ? names : undefined;
       return fontData;
     } catch (e) {
       console.error('Error parsing unifont:', e);

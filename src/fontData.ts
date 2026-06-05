@@ -20,6 +20,8 @@ export enum ShxFontType {
 export interface ShxFontContentData {
   /** Mapping of character codes to their bitmap data */
   data: Record<number, Uint8Array>;
+  /** Mapping of shape names to character codes (shape fonts only) */
+  names?: Record<string, number>;
   /** Additional information about the font */
   info: string;
   /** Text orientation (horizontal or vertical) */

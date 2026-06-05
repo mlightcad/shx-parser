@@ -248,13 +248,15 @@
                 <div id="fileVersion" class="font-info-value"></div>
                 <div class="font-info-label">Number of Characters:</div>
                 <div id="charCount" class="font-info-value"></div>
+                <div class="font-info-label" id="namedShapeLabel" style="display: none;">Named Shapes:</div>
+                <div id="namedShapeCount" class="font-info-value" style="display: none;"></div>
                 <div class="font-info-label">Font Additional Info:</div>
                 <div id="fontAdditionalInfo" class="font-info-value"></div>
             </div>
         </div>
         
         <div class="search-container">
-            <input type="text" id="codeSearch" class="search-input" placeholder="Search by code (e.g. 65 for 'A' or 0x41)" />
+            <input type="text" id="codeSearch" class="search-input" placeholder="Search by code or shape name (e.g. 65, 0x41, GRS)" />
             <button type="button" id="searchClear" class="search-clear" aria-label="Clear search">&times;</button>
         </div>
 
@@ -431,6 +433,14 @@
                 document.getElementById('fontType').textContent = header.fontType;
                 document.getElementById('fileVersion').textContent = header.fileVersion;
                 document.getElementById('charCount').textContent = Object.keys(content.data).length;
+
+                const namedShapeLabel = document.getElementById('namedShapeLabel');
+                const namedShapeCount = document.getElementById('namedShapeCount');
+                const namedCount = content.names ? Object.keys(content.names).length : 0;
+                namedShapeLabel.style.display = namedCount > 0 ? '' : 'none';
+                namedShapeCount.style.display = namedCount > 0 ? '' : 'none';
+                namedShapeCount.textContent = namedCount;
+
                 document.getElementById('fontAdditionalInfo').textContent = content.info
             }
 
@@ -456,26 +466,37 @@
                 const info = document.createElement('div');
                 info.className = 'character-info';
                 info.dataset.code = code;
-                this.updateCellFormat(info, code);
+                const shapeName = this.font.getShapeName(parseInt(code));
+                if (shapeName) {
+                    info.dataset.name = shapeName;
+                }
+                this.updateCellFormat(info, code, shapeName);
                 cell.appendChild(info);
 
                 // Add click handler to show modal
-                cell.addEventListener('click', () => this.showModal(code, shape));
+                cell.addEventListener('click', () => this.showModal(code, shape, shapeName));
 
                 return cell;
             }
 
-            updateCellFormat(infoElement, code) {
+            formatCode(code) {
                 const numCode = parseInt(code);
-                infoElement.textContent = this.formatToggle.checked ? 
-                    `Code: 0x${numCode.toString(16).toUpperCase()}` :
-                    `Code: ${code}`;
+                return this.formatToggle.checked ?
+                    `0x${numCode.toString(16).toUpperCase()}` :
+                    `${code}`;
+            }
+
+            updateCellFormat(infoElement, code, shapeName) {
+                const codeText = this.formatCode(code);
+                infoElement.textContent = shapeName ?
+                    `${shapeName} (${codeText})` :
+                    `Code: ${codeText}`;
             }
 
             updateCodeFormat() {
                 this.allCharacterCells.forEach((cell, code) => {
                     const info = cell.querySelector('.character-info');
-                    this.updateCellFormat(info, code);
+                    this.updateCellFormat(info, code, info.dataset.name);
                 });
             }
 
@@ -502,6 +523,11 @@
                     if (searchValue === '') {
                         cell.style.display = ''; // Show all when search is empty
                     } else {
+                        const info = cell.querySelector('.character-info');
+                        const shapeName = info?.dataset.name;
+                        const searchLower = searchValue.toLowerCase();
+                        const nameMatch = shapeName && shapeName.toLowerCase().includes(searchLower);
+
                         let searchCode;
                         if (searchValue.toLowerCase().startsWith('0x')) {
                             // Handle hexadecimal input
@@ -511,7 +537,9 @@
                             searchCode = parseInt(searchValue).toString();
                         }
 
-                        if (!isNaN(parseInt(searchCode))) {
+                        if (nameMatch) {
+                            cell.style.display = '';
+                        } else if (!isNaN(parseInt(searchCode))) {
                             cell.style.display = code === searchCode ? '' : 'none';
                         } else if (!isBigFont) {
                             // For regular fonts, convert to Unicode
@@ -555,7 +583,7 @@
                 });
             }
 
-            showModal(code, shape) {
+            showModal(code, shape, shapeName) {
                 this.modalShape.innerHTML = '';
 
                 // Get SVG string with auto-fit enabled
@@ -571,10 +599,10 @@
                 this.modalShape.appendChild(svg);
                 
                 // Update modal character info
-                const numCode = parseInt(code);
-                this.modalCharacterInfo.textContent = this.formatToggle.checked ? 
-                    `Character Code: 0x${numCode.toString(16).toUpperCase()}` :
-                    `Character Code: ${code}`;
+                const codeText = this.formatCode(code);
+                this.modalCharacterInfo.textContent = shapeName ?
+                    `Shape: ${shapeName} (Code: ${codeText})` :
+                    `Character Code: ${codeText}`;
 
                 // Show modal
                 this.modal.style.display = 'flex';
