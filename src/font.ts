@@ -48,6 +48,62 @@ export class ShxFont {
   }
 
   /**
+   * Return true if this font contains a shape with the specified name. Otherwise, return false.
+   * Shape names are matched case-insensitively.
+   * @param name - The shape name to check (for example, "GRS")
+   * @returns True if this font contains the named shape. Otherwise, return false.
+   */
+  hasShape(name: string): boolean {
+    return this.getShapeCode(name) !== undefined;
+  }
+
+  /**
+   * Gets the character code for a named shape.
+   * @param name - The shape name to look up
+   * @returns The character code, or undefined if the shape is not found
+   */
+  getShapeCode(name: string): number | undefined {
+    const names = this.fontData.content.names;
+    if (!names) {
+      return undefined;
+    }
+    return names[name.toUpperCase()];
+  }
+
+  /**
+   * Gets the shape name for a character code, if one is defined.
+   * @param code - The character code to look up
+   * @returns The shape name, or undefined if the code has no name
+   */
+  getShapeName(code: number): string | undefined {
+    const names = this.fontData.content.names;
+    if (!names) {
+      return undefined;
+    }
+    for (const [name, shapeCode] of Object.entries(names)) {
+      if (shapeCode === code) {
+        return name;
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Gets the shape data for a named shape at a given font size.
+   * Shape names are matched case-insensitively.
+   * @param name - The shape name to get the shape for
+   * @param size - The desired font size
+   * @returns The shape data for the named shape, or undefined if it is not found in the font
+   */
+  getShapeByName(name: string, size: number) {
+    const code = this.getShapeCode(name);
+    if (code === undefined) {
+      return undefined;
+    }
+    return this.getCharShape(code, size);
+  }
+
+  /**
    * Gets the shape data for a specific character at a given font size.
    * @param code - The character code to get the shape for
    * @param size - The desired font size

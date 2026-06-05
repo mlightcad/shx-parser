@@ -108,6 +108,11 @@ async function main() {
     console.log('Base Down:', fontData.content.baseDown);
     console.log('Number of shapes:', Object.keys(fontData.content.data).length);
     console.log('Available codes:', Object.keys(fontData.content.data).join(', '));
+    if (fontData.content.names) {
+      console.log('Named shapes:', Object.entries(fontData.content.names)
+        .map(([name, code]) => `${name}=${code}`)
+        .join(', '));
+    }
     console.log('----------------\n');
 
     // Example: Generate SVG for a text string
