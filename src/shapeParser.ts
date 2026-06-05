@@ -463,9 +463,7 @@ export class ShxShapeParser {
           origin,
           inheritParentPen
         );
-        const merged =
-          shape?.polylines.some(line => line.length >= 2) ?? false;
-        if (merged) {
+        if (shape?.polylines.some(line => line.length >= 2)) {
           state.polylines.push(...shape.polylines.slice());
           if (shape.lastPoint) {
             state.currentPoint = shape.lastPoint.clone();
