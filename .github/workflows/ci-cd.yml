@@ -9,7 +9,6 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: write
   pages: write
@@ -18,6 +17,8 @@ permissions:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    environment: release
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -26,30 +27,44 @@ jobs:
 
       - uses: pnpm/action-setup@v6
 
-      # Cache node_modules
-      - uses: actions/setup-node@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22.14.0
           cache: 'pnpm'
-          registry-url: https://registry.npmjs.org
-       
+          registry-url: 'https://registry.npmjs.org'
+          scope: '@mlightcad'
+
+      - name: Upgrade npm for Trusted Publishing
+        run: npm install -g npm@latest
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-    
+
       - name: Lint
         run: pnpm lint
-        
+
       - name: Build
         run: pnpm build
 
       - name: Run tests
         run: pnpm test
 
+      # Authenticates via npm Trusted Publishing (OIDC); no NPM_TOKEN needed.
+      # Configure the package on npmjs.com → Settings → Trusted publishing:
+      #   Provider: GitHub Actions
+      #   Repository: mlightcad/shx-parser
+      #   Workflow filename: ci-cd.yml
+      #   Environment: release  (must match the job environment below)
       - name: Publish package to npm
         if: startsWith(github.ref, 'refs/tags/')
-        run: pnpm publish:package
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm --version
+          # setup-node writes an empty _authToken line that blocks OIDC fallback
+          if [ -f "$HOME/.npmrc" ]; then
+            sed -i '/_authToken/d' "$HOME/.npmrc"
+          fi
+          pnpm publish:package
 
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/')
@@ -69,15 +84,15 @@ jobs:
 
       - uses: pnpm/action-setup@v6
 
-      # Cache node_modules
-      - uses: actions/setup-node@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
         with:
-          node-version: 20
+          node-version: 22.14.0
           cache: 'pnpm'
-       
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-    
+
       - name: Build
         run: pnpm example
 
