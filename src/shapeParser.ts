@@ -24,8 +24,10 @@ const CIRCLE_SPAN = Math.PI / 18;
 export class ShxShapeParser {
   /** Font data of the font file */
   private readonly fontData: ShxFontData;
-  /** Cached shapes for performance. Key is character code. */
+  /** Cached top-level shapes (flush trailing pen-down strokes at shape end). */
   private shapeCache: Map<number, ShxShape> = new Map();
+  /** Cached subshape primitives (no end flush; parent may continue the stroke). */
+  private subshapeCache: Map<number, ShxShape> = new Map();
   /** Shapes data. Key is the char code */
   private shapeData: Map<number, ShxShape> = new Map();
 
@@ -38,6 +40,7 @@ export class ShxShapeParser {
    */
   release(): void {
     this.shapeCache.clear();
+    this.subshapeCache.clear();
     this.shapeData.clear();
   }
 
@@ -71,7 +74,7 @@ export class ShxShapeParser {
       const codes = this.fontData.content.data;
       if (codes[code]) {
         const data = codes[code];
-        baseShape = this.parseShape(data);
+        baseShape = this.parseShape(data, { flushOnEnd: true });
         this.shapeData.set(code, baseShape);
         this.shapeCache.set(code, baseShape);
       }
@@ -148,7 +151,7 @@ export class ShxShapeParser {
    */
   private parseShape(
     data: Uint8Array,
-    options: { initialPenDown?: boolean } = {}
+    options: { initialPenDown?: boolean; flushOnEnd?: boolean } = {}
   ): ShxShape {
     let currentPoint = new Point();
     const polylines: Point[][] = [];
@@ -166,10 +169,10 @@ export class ShxShapeParser {
       sp,
       isPenDown,
       scale: 1,
-      // Only flush a pen-down polyline on shape end when parsing a unifont
-      // subshape with inherited pen (amgdt %%132). Global flush regresses bigfont
-      // subshape caches (e.g. gbcbig.shx CJK glyphs).
-      flushEndPolyline: options.initialPenDown ?? false,
+      // Top-level glyphs flush trailing pen-down strokes at 0x00. Subshape
+      // primitives and inherited-pen unifont subshapes (amgdt %%132) opt in
+      // via flushOnEnd; bigfont subshape cache keeps flush off to avoid regressions.
+      flushEndPolyline: options.flushOnEnd ?? false,
     };
 
     for (let i = 0; i < data.length; i++) {
@@ -807,17 +810,17 @@ export class ShxShapeParser {
       if (!data) {
         return undefined;
       }
-      baseShape = this.parseShape(data, { initialPenDown: true });
+      baseShape = this.parseShape(data, { initialPenDown: true, flushOnEnd: true });
     } else {
-      baseShape = this.shapeCache.get(code);
+      baseShape = this.subshapeCache.get(code);
       if (!baseShape) {
         const data = this.fontData.content.data[code];
         if (!data) {
           return undefined;
         }
-        baseShape = this.parseShape(data);
+        baseShape = this.parseShape(data, { flushOnEnd: false });
         this.shapeData.set(code, baseShape);
-        this.shapeCache.set(code, baseShape);
+        this.subshapeCache.set(code, baseShape);
       }
     }
 
