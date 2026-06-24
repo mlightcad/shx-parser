@@ -156,6 +156,24 @@
         .format-toggle input[type="checkbox"] {
             margin: 0;
         }
+        .format-toggle .dot {
+            display: inline-block;
+            border-radius: 50%;
+            vertical-align: -1px;
+            opacity: 0.5;
+        }
+        .format-toggle .dot-red {
+            width: 10px;
+            height: 10px;
+            margin-right: 4px;
+            background: red;
+        }
+        .format-toggle .dot-blue {
+            width: 8px;
+            height: 8px;
+            margin: 0 4px;
+            background: blue;
+        }
         .loading {
             display: none;
             text-align: center;
@@ -263,6 +281,12 @@
         <div class="format-toggle">
             <input type="checkbox" id="formatToggle">
             <label for="formatToggle">Show codes in hexadecimal format</label>
+            <input type="checkbox" id="markersToggle">
+            <label for="markersToggle">
+                <span class="dot dot-red" aria-hidden="true"></span>insertion (0, 0)
+                ·
+                <span class="dot dot-blue" aria-hidden="true"></span>lastPoint (end vector)
+            </label>
         </div>
 
         <div id="charactersGrid" class="characters-grid"></div>
@@ -291,6 +315,7 @@
                 this.searchClear = document.getElementById('searchClear');
                 this.searchContainer = document.querySelector('.search-container');
                 this.formatToggle = document.getElementById('formatToggle');
+                this.markersToggle = document.getElementById('markersToggle');
                 this.formatToggleContainer = document.querySelector('.format-toggle');
                 this.modal = document.getElementById('shapeModal');
                 this.modalClose = document.querySelector('.modal-close');
@@ -312,6 +337,7 @@
                 this.codeSearch.addEventListener('input', this.toggleClearButton.bind(this));
                 this.searchClear.addEventListener('click', this.clearSearch.bind(this));
                 this.formatToggle.addEventListener('change', () => this.updateCodeFormat());
+                this.markersToggle.addEventListener('change', () => this.font && this.displayCharacters());
                 this.initModeTabs();
                 this.initModal();
                 this.loadFontLibrary();
@@ -444,6 +470,34 @@
                 document.getElementById('fontAdditionalInfo').textContent = content.info
             }
 
+            getMarkerRadius(shape, scale = 1) {
+                const { maxX, minX, maxY, minY } = shape.bbox;
+                return Math.max(maxX - minX, maxY - minY, 1) * 0.04 * scale;
+            }
+
+            createMarkerCircle(cx, cy, r, fill) {
+                const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+                circle.setAttribute('cx', String(cx));
+                circle.setAttribute('cy', String(cy));
+                circle.setAttribute('r', String(r));
+                circle.setAttribute('fill', fill);
+                circle.setAttribute('fill-opacity', '0.5');
+                circle.setAttribute('stroke', 'white');
+                circle.setAttribute('stroke-opacity', '0.5');
+                circle.setAttribute('stroke-width', String(r * 0.25));
+                return circle;
+            }
+
+            /** Append insertion point (0,0) and lastPoint markers to an SVG element */
+            appendShapeMarkers(svg, shape) {
+                svg.appendChild(this.createMarkerCircle(0, 0, this.getMarkerRadius(shape, 1.15), 'red'));
+
+                if (shape.lastPoint) {
+                    const { x, y } = shape.lastPoint;
+                    svg.appendChild(this.createMarkerCircle(x, -y, this.getMarkerRadius(shape, 0.85), 'blue'));
+                }
+            }
+
             createCharacterCell(code, shape) {
                 const cell = document.createElement('div');
                 cell.className = 'character-cell';
@@ -456,8 +510,9 @@
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = svgString;
                 const svg = tempDiv.querySelector('svg');
-                
-                // Wrap SVG into a fixed-height flex container for consistent cell height
+                if (this.markersToggle.checked) {
+                    this.appendShapeMarkers(svg, shape);
+                }
                 const svgWrap = document.createElement('div');
                 svgWrap.className = 'character-svg';
                 svgWrap.appendChild(svg);
@@ -595,10 +650,12 @@
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = svgString;
                 const svg = tempDiv.querySelector('svg');
-                
+                if (this.markersToggle.checked) {
+                    this.appendShapeMarkers(svg, shape);
+                }
+
                 this.modalShape.appendChild(svg);
-                
-                // Update modal character info
+
                 const codeText = this.formatCode(code);
                 this.modalCharacterInfo.textContent = shapeName ?
                     `Shape: ${shapeName} (Code: ${codeText})` :
