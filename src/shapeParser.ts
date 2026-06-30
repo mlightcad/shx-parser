@@ -51,7 +51,11 @@ export class ShxShapeParser {
    * @returns The parsed shape or undefined if the character is not found
    */
   getCharShape(code: number, size: number): ShxShape | undefined {
-    const scale = size / this.fontData.content.height;
+    const fontType = this.fontData.header.fontType;
+    /**
+     * For SHAPES type, size is a scale factor applied to design units (native bbox × size).
+     */
+    const scale = fontType === ShxFontType.SHAPES ? size : size / this.fontData.content.height;
     return this.parseAndScale(code, { factor: scale });
   }
 
