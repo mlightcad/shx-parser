@@ -51,11 +51,15 @@ export class ShxShapeParser {
    * @returns The parsed shape or undefined if the character is not found
    */
   getCharShape(code: number, size: number): ShxShape | undefined {
-    const fontType = this.fontData.header.fontType;
     /**
-     * For SHAPES type, size is a scale factor applied to design units (native bbox × size).
+     * Specifically, for files of type SHAPES, if shape number 0 is missing, the file is considered a shape file.
+     * For shape files, we ignore font size and treat size as a scale factor on design units (native bbox × size).
+     *
+     * @see https://help.autodesk.com/view/OARXMAC/2026/ENU/?guid=GUID-DE941DB5-7044-433C-AA68-2A9AE98A5713
+     * @see https://help.autodesk.com/view/OARXMAC/2026/ENU/?guid=GUID-9BBE5B28-DF02-4EC5-863A-BA04AB6F5EF1
      */
-    const scale = fontType === ShxFontType.SHAPES ? size : size / this.fontData.content.height;
+    const isPlainShape = this.fontData.header.fontType === ShxFontType.SHAPES && !(0 in this.fontData.content.data);
+    const scale = isPlainShape ? size : size / this.fontData.content.height;
     return this.parseAndScale(code, { factor: scale });
   }
 
