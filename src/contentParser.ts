@@ -8,7 +8,15 @@ const DEFAULT_FONT_SIZE = 10;
  * 
  * ['\r', '\n', '\x00']
  */
-const TERMINATING_CHARS = [0x0D, 0x0A, 0x00];
+const TERMINATING_CHARS = [0x0d, 0x0a, 0x00];
+
+function buildCodeToName(names: Record<string, number>): Record<number, string> {
+  const codeToName: Record<number, string> = {};
+  for (const [name, code] of Object.entries(names)) {
+    codeToName[code] = name;
+  }
+  return codeToName;
+}
 
 /**
  * Splits a compiled shape entry into its optional name label and bytecode payload.
@@ -95,6 +103,7 @@ class ShxShapeContentParser implements ShxContentParser {
       const fontData: ShxFontContentData = {
         data,
         names: Object.keys(names).length > 0 ? names : undefined,
+        codeToName: Object.keys(names).length > 0 ? buildCodeToName(names) : undefined,
         info: '',
         baseUp: 8,
         baseDown: 2,
@@ -127,18 +136,8 @@ class ShxShapeContentParser implements ShxContentParser {
 
       return fontData;
     } catch (e) {
-      console.error('Error parsing shape font:', e);
-      // Set default values if parsing fails
-      return {
-        data: {},
-        info: 'Failed to parse font file',
-        baseUp: 8,
-        baseDown: 2,
-        height: DEFAULT_FONT_SIZE,
-        width: DEFAULT_FONT_SIZE,
-        orientation: 'horizontal',
-        isExtended: false,
-      };
+      const message = e instanceof Error ? e.message : String(e);
+      throw new Error(`Failed to parse shape font: ${message}`);
     }
   }
 }
@@ -226,18 +225,8 @@ class ShxBigfontContentParser implements ShxContentParser {
 
       return fontData;
     } catch (e) {
-      console.error('Error parsing big font:', e);
-      // Set default values if parsing fails
-      return {
-        data: {},
-        info: 'Failed to parse font file',
-        baseUp: 8,
-        baseDown: 2,
-        height: DEFAULT_FONT_SIZE,
-        width: DEFAULT_FONT_SIZE,
-        orientation: 'horizontal',
-        isExtended: false,
-      };
+      const message = e instanceof Error ? e.message : String(e);
+      throw new Error(`Failed to parse big font: ${message}`);
     }
   }
 
@@ -349,20 +338,12 @@ class ShxUnifontContentParser implements ShxContentParser {
 
       fontData.data = data;
       fontData.names = Object.keys(names).length > 0 ? names : undefined;
+      fontData.codeToName =
+        Object.keys(names).length > 0 ? buildCodeToName(names) : undefined;
       return fontData;
     } catch (e) {
-      console.error('Error parsing unifont:', e);
-      // Set default values if parsing fails
-      return {
-        data: {},
-        info: 'Failed to parse font file',
-        baseUp: 8,
-        baseDown: 2,
-        height: DEFAULT_FONT_SIZE,
-        width: DEFAULT_FONT_SIZE,
-        orientation: 'horizontal',
-        isExtended: false,
-      };
+      const message = e instanceof Error ? e.message : String(e);
+      throw new Error(`Failed to parse unifont: ${message}`);
     }
   }
 }

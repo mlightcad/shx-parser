@@ -76,10 +76,16 @@ export class ShxFont {
    * @returns The shape name, or undefined if the code has no name
    */
   getShapeName(code: number): string | undefined {
+    const fromMap = this.fontData.content.codeToName?.[code];
+    if (fromMap !== undefined) {
+      return fromMap;
+    }
+
     const names = this.fontData.content.names;
     if (!names) {
       return undefined;
     }
+
     for (const [name, shapeCode] of Object.entries(names)) {
       if (shapeCode === code) {
         return name;

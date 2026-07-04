@@ -22,6 +22,8 @@ export interface ShxFontContentData {
   data: Record<number, Uint8Array>;
   /** Mapping of shape names to character codes (shape fonts only) */
   names?: Record<string, number>;
+  /** Reverse mapping of character codes to shape names (shape fonts only) */
+  codeToName?: Record<number, string>;
   /** Additional information about the font */
   info: string;
   /** Text orientation (horizontal or vertical) */

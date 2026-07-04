@@ -8,6 +8,18 @@ export default {
   collectCoverage: true,
   coverageDirectory: 'coverage',
   coverageReporters: ['text', 'lcov'],
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/**/__tests__/**',
+  ],
+  coverageThreshold: {
+    global: {
+      branches: 75,
+      functions: 95,
+      lines: 90,
+      statements: 90,
+    },
+  },
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: 'tsconfig.json',
