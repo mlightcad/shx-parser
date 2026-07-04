@@ -117,14 +117,28 @@ export class ShxFont {
    */
   public getCharShape(code: number, size: number) {
     let shape = this.shapeParser.getCharShape(code, size);
-    if (shape && this.fontData.header.fontType === ShxFontType.BIGFONT) {
+    if (!shape) {
+      return undefined;
+    }
+
+    const fontType = this.fontData.header.fontType;
+
+    if (fontType === ShxFontType.BIGFONT) {
       // Normalize baseline-aligned and mid-cell body glyphs to the origin.
       // Top/center punctuation (e.g. “一”, quotation marks) sit in the upper
       // half of the cell and must keep their vertical position.
       if (shape.bbox.minY <= size * 0.5) {
         shape = shape.normalizeToOrigin();
       }
+    } else if (fontType === ShxFontType.UNIFONT) {
+      // Some unifont files (e.g. tssdeng.shx) encode body strokes in negative Y
+      // with maxY on the baseline. Shift to cell-bottom origin so mixed
+      // bigfont + unifont lines share minY = 0 as the bottom edge.
+      if (shape.bbox.minY < 0 && shape.bbox.maxY <= 0) {
+        shape = shape.normalizeToOrigin();
+      }
     }
+
     return shape;
   }
 
