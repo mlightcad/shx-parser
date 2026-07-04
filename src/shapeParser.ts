@@ -82,7 +82,11 @@ export class ShxShapeParser {
       const codes = this.fontData.content.data;
       if (codes[code]) {
         const data = codes[code];
-        baseShape = this.parseShape(data, { flushOnEnd: true });
+        // Plain shapes/unifont start with pen down; bigfont parent glyphs (hztxt.shx)
+        // rely on explicit pen commands and pen-up advance vectors at shape end.
+        const initialPenDown =
+          this.fontData.header.fontType !== ShxFontType.BIGFONT;
+        baseShape = this.parseShape(data, { flushOnEnd: true, initialPenDown });
         this.shapeData.set(code, baseShape);
         this.shapeCache.set(code, baseShape);
       }
@@ -193,7 +197,20 @@ export class ShxShapeParser {
       }
     }
 
-    return new ShxShape(state.currentPoint, state.polylines);
+    return this.buildShapeFromState(state);
+  }
+
+  /** Builds a shape result, including any trailing pen-down polyline. */
+  private buildShapeFromState(state: {
+    currentPoint: Point;
+    polylines: Point[][];
+    currentPolyline: Point[];
+  }): ShxShape {
+    const polylines = state.polylines.map(line => line.map(p => p.clone()));
+    if (state.currentPolyline.length > 1) {
+      polylines.push(state.currentPolyline.map(p => p.clone()));
+    }
+    return new ShxShape(state.currentPoint.clone(), polylines);
   }
 
   /**
@@ -225,13 +242,17 @@ export class ShxShapeParser {
       case 0: // End of shape definition
         if (state.flushEndPolyline && state.currentPolyline.length > 1) {
           state.polylines.push(state.currentPolyline.slice());
+          state.currentPolyline = [];
+        } else if (state.flushEndPolyline) {
+          state.currentPolyline = [];
         }
-        state.currentPolyline = [];
         state.isPenDown = false;
         break;
       case 1: // Activate Draw mode (pen down)
+        if (!state.isPenDown) {
+          state.currentPolyline.push(state.currentPoint.clone());
+        }
         state.isPenDown = true;
-        state.currentPolyline.push(state.currentPoint.clone());
         break;
       case 2: // Deactivate Draw mode (pen up)
         state.isPenDown = false;
@@ -280,10 +301,14 @@ export class ShxShapeParser {
         break;
       case 14: // Vertical-only command
         // https://help.autodesk.com/view/OARX/2023/ENU/?guid=GUID-06832147-16BE-4A66-A6D0-3ADF98DC8228
-        // Horizontal-orientation fonts skip the next command. Vertical-orientation
-        // fonts (e.g. amgdt.shx) normally execute it, but doing so globally regresses
-        // many amgdt glyphs; keep skip-only until shape-specific handling exists.
-        i = this.skipCode(data, ++i);
+        // Vertical SHAPES/UNIFONT (e.g. amgdt.shx) execute the next command; bigfont
+        // files such as extfont2.shx are vertical but still skip it.
+        if (
+          this.fontData.content.orientation === 'horizontal' ||
+          this.fontData.header.fontType === ShxFontType.BIGFONT
+        ) {
+          i = this.skipCode(data, ++i);
+        }
         break;
     }
 
@@ -455,12 +480,14 @@ export class ShxShapeParser {
             height = data[i] * state.scale;
           } else {
             height = data[i] * state.scale;
+            width = height;
           }
         }
         break;
       case ShxFontType.UNIFONT:
         i++;
         subCode = (data[i++] << 8) | data[i++];
+        i--;
         break;
     }
 
@@ -485,8 +512,26 @@ export class ShxShapeParser {
           }
         }
         // Empty unifont subshape (amgdt %%132): keep pen state and currentPolyline.
+      } else if (this.fontData.header.fontType === ShxFontType.SHAPES) {
+        // SHAPES parent: continue from subshape endpoint (issue 4).
+        shape = this.getScaledSubshapeAtInsertPoint(
+          subCode,
+          width,
+          height,
+          origin
+        );
+        if (shape) {
+          state.polylines.push(...shape.polylines.slice());
+          if (shape.lastPoint) {
+            state.currentPoint = shape.lastPoint.clone();
+          }
+        }
+        state.currentPolyline = [];
+        if (state.isPenDown) {
+          state.currentPolyline.push(state.currentPoint.clone());
+        }
       } else {
-        // Original SHAPES / BIGFONT behavior — do not gate on polyline length.
+        // BIGFONT parent: do not inherit subshape endpoint or pen stroke.
         shape = this.getScaledSubshapeAtInsertPoint(
           subCode,
           width,
@@ -574,13 +619,13 @@ export class ShxShapeParser {
       .subtract(new Point(Math.cos(startRadian) * radius, Math.sin(startRadian) * radius));
 
     const arc = Arc.fromOctant(center, radius, startOctant, octantCount, isClockwise);
+    const arcPoints = arc.tessellate();
 
     if (state.isPenDown) {
-      const arcPoints = arc.tessellate();
       state.currentPolyline.pop();
       state.currentPolyline.push(...arcPoints.slice());
     }
-    state.currentPoint = arc.tessellate().pop()?.clone() as Point;
+    state.currentPoint = arcPoints[arcPoints.length - 1].clone();
     return i;
   }
 
@@ -826,7 +871,12 @@ export class ShxShapeParser {
         if (!data) {
           return undefined;
         }
-        baseShape = this.parseShape(data, { flushOnEnd: false });
+        const subInitialPenDown =
+          this.fontData.header.fontType !== ShxFontType.BIGFONT;
+        baseShape = this.parseShape(data, {
+          flushOnEnd: false,
+          initialPenDown: subInitialPenDown,
+        });
         this.shapeData.set(code, baseShape);
         this.subshapeCache.set(code, baseShape);
       }

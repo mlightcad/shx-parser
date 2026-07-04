@@ -76,5 +76,19 @@ describe('ShxHeaderParser', () => {
         fileVersion: 'V1.0',
       });
     });
+    it('should handle CR not followed by LF+SUB as header content', () => {
+      const header = 'AutoCAD-86 shapes V1.0\rX\r\n\x1a';
+      const buffer = new ArrayBuffer(header.length);
+      const view = new Uint8Array(buffer);
+      for (let i = 0; i < header.length; i++) {
+        view[i] = header.charCodeAt(i);
+      }
+
+      const reader = new ShxFileReader(buffer);
+      const result = parser.parse(reader);
+
+      expect(result.fontType).toBe(ShxFontType.SHAPES);
+      expect(result.fileVersion).toContain('V1.0');
+    });
   });
 });
