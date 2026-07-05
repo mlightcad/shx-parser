@@ -33,6 +33,22 @@ describe('mixed bigfont + unifont vertical alignment', () => {
     }
   }, 60_000);
 
+  it('aligns aehalf baseline glyphs consistently despite float noise at maxY=0', async () => {
+    const aehalf = await loadFont('aehalf.shx');
+    if (!aehalf) return;
+
+    try {
+      const size = 16;
+      const codes = [83, 72, 116, 50, 53]; // S, H, t, 2, 5
+      for (const code of codes) {
+        const shape = aehalf.getCharShape(code, size)!;
+        expect(shape.bbox.minY).toBeCloseTo(0, 5);
+      }
+    } finally {
+      aehalf.release();
+    }
+  }, 60_000);
+
   it('does not invert isocp uppercase letters that already extend above y=0', async () => {
     const isocp = await loadFont('isocp.shx');
     if (!isocp) return;
