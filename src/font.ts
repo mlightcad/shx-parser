@@ -4,6 +4,9 @@ import { ShxHeaderParser } from './headerParser';
 import { ShxContentParserFactory } from './contentParser';
 import { ShxShapeParser } from './shapeParser';
 
+/** Treat arc/line tessellation noise at the baseline as y=0 for unifont alignment. */
+const UNIFONT_BASELINE_EPSILON = 1e-6;
+
 /**
  * Represents a SHX font and provides methods to parse and render its characters.
  * This class handles the loading and parsing of SHX font files, and provides
@@ -128,14 +131,14 @@ export class ShxFont {
       // Top/center punctuation (e.g. “一”, quotation marks) sit in the upper
       // half of the cell and must keep their vertical position.
       if (shape.bbox.minY <= size * 0.5) {
-        shape = shape.normalizeToOrigin();
+        shape = shape.normalizeToOrigin(true);
       }
     } else if (fontType === ShxFontType.UNIFONT) {
       // Some unifont files (e.g. tssdeng.shx) encode body strokes in negative Y
       // with maxY on the baseline. Shift to cell-bottom origin so mixed
       // bigfont + unifont lines share minY = 0 as the bottom edge.
-      if (shape.bbox.minY < 0 && shape.bbox.maxY <= 0) {
-        shape = shape.normalizeToOrigin();
+      if (shape.bbox.minY < 0 && shape.bbox.maxY <= UNIFONT_BASELINE_EPSILON) {
+        shape = shape.normalizeToOrigin(true);
       }
     }
 
