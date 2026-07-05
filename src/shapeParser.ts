@@ -277,6 +277,13 @@ export class ShxShapeParser {
         break;
       case 6: // Pop current location
         state.currentPoint = (state.sp.pop() as Point) ?? state.currentPoint;
+        if (state.currentPolyline.length > 1) {
+          state.polylines.push(state.currentPolyline.slice());
+          state.currentPolyline = [];
+        }
+        if (state.isPenDown) {
+          state.currentPolyline.push(state.currentPoint.clone());
+        }
         break;
       case 7: // Draw subshape
         i = this.handleSubshapeCommand(data, i, state);
@@ -421,7 +428,8 @@ export class ShxShapeParser {
     let i = index;
     let subCode = 0;
     let shape;
-    let height = state.scale * this.fontData.content.height;
+    // Subshape size follows AutoCAD: current vector scale × cap-height (baseUp), not em-box height.
+    let height = state.scale * this.fontData.content.baseUp;
     let width = height;
     const origin = state.currentPoint.clone();
 
@@ -882,9 +890,16 @@ export class ShxShapeParser {
       }
     }
 
-    // Normalize to left-bottom (0,0) before scaling and inserting its in parent space
-    const normalized = baseShape.normalizeToOrigin(true);
-    const scaled = this.scaleShapeByHeightAndWidth(normalized, height, width);
+    // SHAPES/UNIFONT subshapes scale uniformly from the shape origin (0,0), matching
+    // AutoCAD/C# behavior. Do not normalize to bbox — that shifts arc-based circles.
+    const subshapeScale =
+      this.fontData.header.fontType === ShxFontType.BIGFONT
+        ? undefined
+        : height / this.fontData.content.baseUp;
+    const scaled =
+      subshapeScale !== undefined
+        ? this.scaleShapeByFactor(baseShape, subshapeScale)
+        : this.scaleShapeByHeightAndWidth(baseShape.normalizeToOrigin(true), height, width);
     return scaled.offset(insertPoint, false);
   }
 
