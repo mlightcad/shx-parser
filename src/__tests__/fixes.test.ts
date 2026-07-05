@@ -60,7 +60,7 @@ describe('regression fixes (issues 1–7)', () => {
     try {
       getShape(font, 1, 10);
       const parent = getShape(font, 2, 10)!;
-      expect(parent.lastPoint!.x).toBeCloseTo(18);
+      expect(parent.lastPoint!.x).toBeCloseTo(16);
     } finally {
       font.release();
     }

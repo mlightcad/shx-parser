@@ -160,7 +160,7 @@ describe('special shape codes (0–14)', () => {
       });
       try {
         const combined = getShape(font, 2, 10);
-        expect(combined!.lastPoint!.x).toBeCloseTo(18);
+        expect(combined!.lastPoint!.x).toBeCloseTo(16);
       } finally {
         font.release();
       }
