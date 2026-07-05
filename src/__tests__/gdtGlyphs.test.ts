@@ -48,8 +48,8 @@ describe('GDT font glyphs (gdt.shx)', () => {
       const inner = polylineCenter(shape, 1);
       expect(inner.x).toBeCloseTo(outer.x, 1);
       expect(inner.y).toBeCloseTo(outer.y, 1);
-      expect(shape.bbox.maxX).toBeLessThan(size);
-      expect(shape.bbox.maxY).toBeLessThan(size * 0.25);
+      expect(shape.bbox.maxX - shape.bbox.minX).toBeLessThan(size * 1.15);
+      expect(shape.bbox.maxY - shape.bbox.minY).toBeLessThan(size * 1.15);
     } finally {
       font.release();
     }

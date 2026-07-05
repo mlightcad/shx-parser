@@ -1,4 +1,5 @@
 import { ShxFont } from '../font';
+import { layoutTextRun, resolveAdvanceWidth } from '../textLayout';
 
 const FONT_BASE = 'https://cdn.jsdelivr.net/gh/mlightcad/cad-data/fonts/';
 
@@ -12,44 +13,104 @@ async function loadFont(name: string): Promise<ShxFont | null> {
   }
 }
 
-describe('mixed bigfont + unifont vertical alignment', () => {
-  it('aligns tssdeng digits with hztxt hanzi on a shared bottom edge at minY=0', async () => {
+function getShapeParser(font: ShxFont) {
+  return (font as unknown as {
+    shapeParser: { getCharShape(c: number, s: number): import('../shape').ShxShape };
+  }).shapeParser;
+}
+
+describe('font metrics and text layout', () => {
+  it('getCharShape returns the same geometry as shapeParser (no alignment pass)', async () => {
+    const hztxt = await loadFont('hztxt.shx');
+    if (!hztxt) return;
+
+    try {
+      const size = 16;
+      const parser = getShapeParser(hztxt);
+      for (const code of [0xb1df, 0xa1b0, 0xa1a2, 0xa3a4]) {
+        const raw = parser.getCharShape(code, size);
+        const fromFont = hztxt.getCharShape(code, size)!;
+        expect(fromFont.bbox.minX).toBeCloseTo(raw.bbox.minX, 5);
+        expect(fromFont.bbox.minY).toBeCloseTo(raw.bbox.minY, 5);
+        expect(fromFont.bbox.maxX).toBeCloseTo(raw.bbox.maxX, 5);
+        expect(fromFont.bbox.maxY).toBeCloseTo(raw.bbox.maxY, 5);
+      }
+    } finally {
+      hztxt.release();
+    }
+  }, 60_000);
+
+  it('exposes scaled font metrics from shape #0 for mixed-font rendering', async () => {
     const tssdeng = await loadFont('tssdeng.shx');
     const hztxt = await loadFont('hztxt.shx');
     if (!tssdeng || !hztxt) return;
 
     try {
       const size = 16;
-      const digit = tssdeng.getCharShape(56, size)!;
-      const han = hztxt.getCharShape(0xb1df, size)!;
+      const tMetrics = tssdeng.getFontMetrics(size);
+      const hMetrics = hztxt.getFontMetrics(size);
 
-      expect(digit.bbox.minY).toBeCloseTo(0, 5);
-      expect(han.bbox.minY).toBeCloseTo(0, 5);
-      expect(digit.bbox.maxY).toBeGreaterThan(0);
-      expect(han.bbox.maxY).toBeGreaterThan(0);
+      expect(tMetrics.capHeight).toBeGreaterThan(0);
+      expect(hMetrics.capHeight).toBeCloseTo(size, 1);
+      expect(hMetrics.descenderHeight).toBe(0);
+      expect(hztxt.getFontMetrics(size).capHeight).toBe(hMetrics.capHeight);
     } finally {
       tssdeng.release();
       hztxt.release();
     }
   }, 60_000);
 
-  it('aligns aehalf baseline glyphs consistently despite float noise at maxY=0', async () => {
-    const aehalf = await loadFont('aehalf.shx');
-    if (!aehalf) return;
+  it('layoutTextRun aligns mixed-font glyphs on a shared baseline', async () => {
+    const tssdeng = await loadFont('tssdeng.shx');
+    const hztxt = await loadFont('hztxt.shx');
+    if (!tssdeng || !hztxt) return;
 
     try {
       const size = 16;
-      const codes = [83, 72, 116, 50, 53]; // S, H, t, 2, 5
-      for (const code of codes) {
-        const shape = aehalf.getCharShape(code, size)!;
-        expect(shape.bbox.minY).toBeCloseTo(0, 5);
-      }
+      const digitLayout = tssdeng.getLayoutCharShape(56, size)!;
+      const hanLayout = hztxt.getLayoutCharShape(0xb1df, size)!;
+
+      const placed = layoutTextRun([
+        { font: tssdeng, code: 56, size },
+        { font: hztxt, code: 0xb1df, size },
+      ]);
+
+      expect(placed).toHaveLength(2);
+      expect(placed[0].shape.bbox.minY).toBeCloseTo(digitLayout.bbox.minY, 5);
+      expect(placed[1].shape.bbox.minY).toBeCloseTo(hanLayout.bbox.minY, 5);
+      expect(placed[1].x).toBeCloseTo(
+        resolveAdvanceWidth(digitLayout, tssdeng.fontData, size),
+        5
+      );
     } finally {
-      aehalf.release();
+      tssdeng.release();
+      hztxt.release();
     }
   }, 60_000);
 
-  it('does not invert isocp uppercase letters that already extend above y=0', async () => {
+  it('preserves encoded vertical positions for hztxt punctuation types', async () => {
+    const hztxt = await loadFont('hztxt.shx');
+    if (!hztxt) return;
+
+    try {
+      const size = 16;
+      // GBK: U+201C/U+201D — top quotation marks sit above mid-cell
+      for (const code of [0xa1b0, 0xa1b1]) {
+        const shape = hztxt.getCharShape(code, size)!;
+        expect(shape.bbox.maxY).toBeLessThan(size);
+        expect(shape.bbox.minY).toBeGreaterThan(0);
+      }
+      // GBK: U+3001/U+3002 — baseline punctuation
+      for (const code of [0xa1a2, 0xa1a3]) {
+        const shape = hztxt.getCharShape(code, size)!;
+        expect(shape.bbox.maxY).toBeLessThan(size * 0.5);
+      }
+    } finally {
+      hztxt.release();
+    }
+  }, 60_000);
+
+  it('does not invert isocp uppercase letters that extend above y=0', async () => {
     const isocp = await loadFont('isocp.shx');
     if (!isocp) return;
 
@@ -62,21 +123,19 @@ describe('mixed bigfont + unifont vertical alignment', () => {
     }
   }, 60_000);
 
-  it('bigfont normalizeToOrigin still shifts body glyphs up to minY=0', async () => {
-    const hztxt = await loadFont('hztxt.shx');
-    if (!hztxt) return;
+  it('preserves relative vertical positions within unifont families', async () => {
+    const aehalf = await loadFont('aehalf.shx');
+    if (!aehalf) return;
 
     try {
-      const parser = (hztxt as unknown as {
-        shapeParser: { getCharShape(c: number, s: number): import('../shape').ShxShape };
-      }).shapeParser;
-      const raw = parser.getCharShape(0xb1df, 16);
-      const final = hztxt.getCharShape(0xb1df, 16)!;
+      const size = 16;
+      const tilde = aehalf.getCharShape(126, size)!;
+      const digit = aehalf.getCharShape(50, size)!;
 
-      expect(final.bbox.minY).toBe(0);
-      expect(raw.bbox.minY).toBeGreaterThan(0);
+      expect(tilde.bbox.minY).toBeGreaterThan(digit.bbox.minY);
+      expect(tilde.bbox.maxY).toBeLessThan(digit.bbox.maxY);
     } finally {
-      hztxt.release();
+      aehalf.release();
     }
   }, 60_000);
 });
