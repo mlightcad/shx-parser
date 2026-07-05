@@ -539,7 +539,9 @@ export class ShxShapeParser {
           state.currentPolyline.push(state.currentPoint.clone());
         }
       } else {
-        // BIGFONT parent: do not inherit subshape endpoint or pen stroke.
+        // BIGFONT parent: do not inherit subshape endpoint or pen stroke for
+        // drawing primitives (typically #1). Terminal advance primitive #2
+        // (hztxt-style `7,2,0` suffix) defines the pen-up vector / cell width.
         shape = this.getScaledSubshapeAtInsertPoint(
           subCode,
           width,
@@ -548,6 +550,12 @@ export class ShxShapeParser {
         );
         if (shape) {
           state.polylines.push(...shape.polylines.slice());
+          if (subCode === 2 && shape.lastPoint) {
+            const cellWidth = shape.lastPoint.x - origin.x;
+            if (cellWidth > state.currentPoint.x) {
+              state.currentPoint.x = cellWidth;
+            }
+          }
         }
         state.currentPolyline = [];
       }
@@ -896,10 +904,15 @@ export class ShxShapeParser {
       this.fontData.header.fontType === ShxFontType.BIGFONT
         ? undefined
         : height / this.fontData.content.baseUp;
+    const hasDrawableGeometry = baseShape.polylines.some(line => line.length > 0);
     const scaled =
       subshapeScale !== undefined
         ? this.scaleShapeByFactor(baseShape, subshapeScale)
-        : this.scaleShapeByHeightAndWidth(baseShape.normalizeToOrigin(true), height, width);
+        : this.scaleShapeByHeightAndWidth(
+            hasDrawableGeometry ? baseShape.normalizeToOrigin(true) : baseShape,
+            height,
+            width
+          );
     return scaled.offset(insertPoint, false);
   }
 
