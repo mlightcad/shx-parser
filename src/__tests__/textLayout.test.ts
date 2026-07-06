@@ -1,4 +1,5 @@
-import { computeFontMetrics, ShxFont } from '../font';
+import { ShxFont } from '../font';
+import { computeFontMetrics } from '../glyphLayout';
 import { ShxFontData, ShxFontType } from '../fontData';
 import { Point } from '../point';
 import { ShxShape } from '../shape';
@@ -49,11 +50,30 @@ function makeMockFont(getShape: () => ShxShape | undefined): ShxFont {
 
 describe('textLayout', () => {
   describe('resolveAdvanceWidth', () => {
-    it('returns pen advance for narrow glyphs', () => {
+    it('returns pen advance for layout-ready unifont glyphs', () => {
       const fontData = makeFontData(ShxFontType.UNIFONT);
       const size = 16;
       const shape = makeShape(4, 0, 2);
       expect(resolveAdvanceWidth(shape, fontData, size)).toBe(4);
+    });
+
+    it('falls back to cell width for compact monospace unifonts without pen advance', () => {
+      const fontData = makeFontData(ShxFontType.UNIFONT);
+      fontData.content.width = 8;
+      fontData.content.height = 8;
+      const size = 16;
+      const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
+      const shape = new ShxShape(undefined, [[new Point(0, 0), new Point(2, 0)]]);
+      expect(resolveAdvanceWidth(shape, fontData, size)).toBeCloseTo(cellWidth);
+    });
+
+    it('falls back to ink extent for proportional unifonts without pen advance', () => {
+      const fontData = makeFontData(ShxFontType.UNIFONT);
+      fontData.content.width = 33;
+      fontData.content.height = 33;
+      const size = 16;
+      const shape = new ShxShape(undefined, [[new Point(0, 0), new Point(2, 0)]]);
+      expect(resolveAdvanceWidth(shape, fontData, size)).toBe(2);
     });
 
     it('uses full cell width for bigfont glyphs', () => {
@@ -64,19 +84,15 @@ describe('textLayout', () => {
       expect(resolveAdvanceWidth(shape, fontData, size)).toBeCloseTo(cellWidth);
     });
 
-    it('extends advance when unifont ink exceeds pen vector', () => {
+    it('preserves explicit pen advance for proportional unifonts', () => {
       const fontData = makeFontData(ShxFontType.UNIFONT);
+      fontData.content.width = 33;
+      fontData.content.height = 33;
       const size = 16;
-      const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
-      const shape = makeShape(4, 0, cellWidth * 0.8);
-      expect(resolveAdvanceWidth(shape, fontData, size)).toBeCloseTo(cellWidth);
-    });
-
-    it('uses ink extent for narrow unifont glyphs', () => {
-      const fontData = makeFontData(ShxFontType.UNIFONT);
-      const size = 16;
-      const shape = makeShape(2, 0, 3);
-      expect(resolveAdvanceWidth(shape, fontData, size)).toBe(2);
+      const smallSymbol = new ShxShape(new Point(0.714, 0), [
+        [new Point(0, 4), new Point(0.714, 4.714)],
+      ]);
+      expect(resolveAdvanceWidth(smallSymbol, fontData, size)).toBeCloseTo(0.714);
     });
   });
 

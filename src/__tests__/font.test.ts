@@ -1,4 +1,5 @@
-import { ShxFont, alignShxGlyphForLayout } from '../font';
+import { ShxFont } from '../font';
+import { alignShxGlyphForLayout, computeFontMetrics } from '../glyphLayout';
 import { ShxFontData, ShxFontType } from '../fontData';
 import { Point } from '../point';
 import { ShxShape } from '../shape';
@@ -142,7 +143,17 @@ describe('ShxFont', () => {
       expect(aligned.bbox.minY).toBeCloseTo(0);
     });
 
-    it('normalizes unifont glyphs with negative Y to the baseline', () => {
+    it('normalizes horizontal origin for descender body glyphs', () => {
+      const size = 16;
+      const shape = new ShxShape(new Point(8, 0), [
+        [new Point(-2, -2), new Point(6, 12)],
+      ]);
+      const aligned = alignShxGlyphForLayout(shape, bigfontData, size);
+      expect(aligned.bbox.minY).toBeCloseTo(0);
+      expect(aligned.bbox.minX).toBeCloseTo(0);
+    });
+
+    it('maps top-anchored unifont glyphs to the layout baseline', () => {
       const unifontData: ShxFontData = {
         header: { fontType: ShxFontType.UNIFONT, fileHeader: 'test', fileVersion: '1.0' },
         content: {
@@ -162,9 +173,33 @@ describe('ShxFont', () => {
       ]);
       const aligned = alignShxGlyphForLayout(shape, unifontData, size);
       expect(aligned.bbox.minY).toBeCloseTo(0);
+      expect(aligned.lastPoint?.x).toBeCloseTo(6);
     });
 
-    it('extends narrow unifont advance to ink extent', () => {
+    it('uses cell width when compact monospace unifont pen advance is missing', () => {
+      const unifontData: ShxFontData = {
+        header: { fontType: ShxFontType.UNIFONT, fileHeader: 'test', fileVersion: '1.0' },
+        content: {
+          data: {},
+          info: '',
+          orientation: 'horizontal',
+          baseUp: 8,
+          baseDown: 2,
+          height: 8,
+          width: 8,
+          isExtended: false,
+        },
+      };
+      const size = 16;
+      const metrics = computeFontMetrics(unifontData.content, size);
+      const shape = new ShxShape(undefined, [
+        [new Point(0, -4), new Point(6, 0)],
+      ]);
+      const aligned = alignShxGlyphForLayout(shape, unifontData, size);
+      expect(aligned.lastPoint?.x).toBeCloseTo(metrics.cellWidth);
+    });
+
+    it('preserves explicit unifont pen advance from the SHX definition', () => {
       const unifontData: ShxFontData = {
         header: { fontType: ShxFontType.UNIFONT, fileHeader: 'test', fileVersion: '1.0' },
         content: {
@@ -183,10 +218,10 @@ describe('ShxFont', () => {
         [new Point(0, 2), new Point(1.5, 4)],
       ]);
       const aligned = alignShxGlyphForLayout(shape, unifontData, size);
-      expect(aligned.lastPoint?.x).toBeCloseTo(1.5);
+      expect(aligned.lastPoint?.x).toBeCloseTo(1);
     });
 
-    it('centers zero-height unifont strokes in the cap band', () => {
+    it('places zero-height unifont strokes on the cap line after metrics alignment', () => {
       const unifontData: ShxFontData = {
         header: { fontType: ShxFontType.UNIFONT, fileHeader: 'test', fileVersion: '1.0' },
         content: {
@@ -201,12 +236,13 @@ describe('ShxFont', () => {
         },
       };
       const size = 16;
+      const metrics = computeFontMetrics(unifontData.content, size);
       const shape = new ShxShape(new Point(4, 0), [
         [new Point(2, 0), new Point(2, 0)],
       ]);
       const aligned = alignShxGlyphForLayout(shape, unifontData, size);
-      expect(aligned.bbox.minY).toBeGreaterThan(0);
-      expect(aligned.bbox.maxY).toBeLessThan(size);
+      expect(aligned.bbox.minY).toBeCloseTo(metrics.capHeight);
+      expect(aligned.bbox.maxY).toBeCloseTo(metrics.capHeight);
     });
   });
 

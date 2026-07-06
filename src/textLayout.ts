@@ -1,9 +1,13 @@
-import { computeFontMetrics, ShxFont } from './font';
+import { ShxFont } from './font';
+import { computeFontMetrics, isCompactMonospaceUnifont } from './glyphLayout';
 import { ShxFontData, ShxFontType } from './fontData';
 import { Point } from './point';
 import { ShxShape } from './shape';
 
 const ADVANCE_EPSILON = 1e-6;
+
+/** Wide proportional unifont symbols expand advance to the full cell width. */
+const PROPORTIONAL_UNIFONT_CELL_WIDTH_RATIO = 0.25;
 
 /** A glyph positioned on a text line. */
 export interface PlacedGlyph {
@@ -37,37 +41,43 @@ export function getAdvanceWidth(shape: ShxShape): number {
 /**
  * Resolves the horizontal advance for a layout-ready glyph.
  *
+ * Prefer glyphs from {@link ShxFont.getLayoutCharShape} so pen vectors and baseline
+ * alignment already reflect {@link computeFontMetrics}.
+ *
  * @param shape - Scaled glyph geometry, typically from {@link ShxFont.getLayoutCharShape}
  * @param fontData - Parsed font header and content
  * @param size - Target font size in drawing units
  */
 export function resolveAdvanceWidth(shape: ShxShape, fontData: ShxFontData, size: number): number {
-  const scaledCellWidth = computeFontMetrics(fontData.content, size).cellWidth;
-  const bboxWidth = shape.bbox.maxX - shape.bbox.minX;
+  const metrics = computeFontMetrics(fontData.content, size);
   const penAdvance = getAdvanceWidth(shape);
-  const bboxMaxX = shape.bbox.maxX;
   const fontType = fontData.header.fontType;
 
-  if (bboxMaxX < scaledCellWidth * 0.25) {
+  if (fontType === ShxFontType.UNIFONT) {
+    const penAdvance = shape.lastPoint?.x ?? 0;
+    if (penAdvance <= ADVANCE_EPSILON) {
+      if (isCompactMonospaceUnifont(fontData.content)) {
+        return metrics.cellWidth;
+      }
+      return shape.bbox.maxX - shape.bbox.minX;
+    }
+    if (shape.bbox.maxX < metrics.cellWidth * PROPORTIONAL_UNIFONT_CELL_WIDTH_RATIO) {
+      return penAdvance;
+    }
+    const inkExtent = Math.max(shape.bbox.maxX - shape.bbox.minX, shape.bbox.maxX);
+    if (inkExtent > penAdvance + ADVANCE_EPSILON) {
+      return Math.max(penAdvance, metrics.cellWidth);
+    }
     return penAdvance;
   }
 
   if (fontType === ShxFontType.BIGFONT) {
-    return Math.max(bboxWidth, penAdvance, scaledCellWidth);
+    const bboxWidth = shape.bbox.maxX - shape.bbox.minX;
+    return Math.max(bboxWidth, penAdvance, metrics.cellWidth);
   }
 
-  if (fontType === ShxFontType.UNIFONT) {
-    const inkExtent = Math.max(bboxWidth, bboxMaxX);
-    let advance = Math.max(penAdvance, inkExtent);
-    if (inkExtent > penAdvance + ADVANCE_EPSILON) {
-      advance = Math.max(advance, scaledCellWidth);
-    } else if (bboxMaxX < scaledCellWidth * 0.25) {
-      advance = Math.max(penAdvance, inkExtent);
-    }
-    return advance;
-  }
-
-  return penAdvance > 0 ? penAdvance : bboxWidth;
+  const bboxWidth = shape.bbox.maxX - shape.bbox.minX;
+  return penAdvance > ADVANCE_EPSILON ? penAdvance : bboxWidth;
 }
 
 /**
