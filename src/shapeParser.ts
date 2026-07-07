@@ -16,6 +16,22 @@ export interface ScalingOptions {
 }
 
 const CIRCLE_SPAN = Math.PI / 18;
+const ADVANCE_EPSILON = 1e-6;
+
+/** Mutable parser state shared across shape bytecode command handlers. */
+type ParseState = {
+  currentPoint: Point;
+  polylines: Point[][];
+  currentPolyline: Point[];
+  sp: Point[];
+  isPenDown: boolean;
+  scale: number;
+  flushEndPolyline?: boolean;
+  /** True once bytecode defines horizontal advance (terminal pen-up moves, BIGFONT cell #2). */
+  hasExplicitAdvance: boolean;
+  /** Pen-up XY move pending at shape end; confirmed on byte 0 unless superseded. */
+  pendingTerminalAdvance: boolean;
+};
 
 /**
  * Parses SHX font data into shapes on demand. To improve performance, the shape is parsed on demand by
@@ -81,7 +97,7 @@ export class ShxShapeParser {
     } else {
       const codes = this.fontData.content.data;
       if (codes[code]) {
-        const data = codes[code];
+        const data = this.prepareBigfontGlyphBytecode(code, codes[code]);
         // Plain shapes/unifont start with pen down; bigfont parent glyphs (hztxt.shx)
         // rely on explicit pen commands and pen-up advance vectors at shape end.
         const initialPenDown =
@@ -108,6 +124,44 @@ export class ShxShapeParser {
     }
   }
 
+  /** Strips the embedded character-code prefix from dual-byte BIGFONT parent glyphs. */
+  private prepareBigfontGlyphBytecode(code: number, data: Uint8Array): Uint8Array {
+    if (this.fontData.header.fontType !== ShxFontType.BIGFONT || code <= 0xff) {
+      return data;
+    }
+
+    const hi = (code >> 8) & 0xff;
+    const lo = code & 0xff;
+    if (data.length >= 2 && data[0] === hi && data[1] === lo) {
+      let start = 2;
+      if (data[start] === 0) {
+        start++;
+      }
+      return data.slice(start);
+    }
+
+    return data;
+  }
+
+  /**
+   * Dual-orientation vertical BIGFONT files (e.g. gbcbig.shx) use 0x8e/0x8f markers on
+   * code 7 instead of real subshapes. Only the marker byte is skipped; following setup
+   * commands (push / pen up / xy origin) are executed normally.
+   */
+  private isVerticalDualBigfontMarker(
+    data: Uint8Array,
+    index: number,
+    kind: 'open' | 'close'
+  ): boolean {
+    if (!this.fontData.content.verticalDualMode) {
+      return false;
+    }
+    if (kind === 'open') {
+      return data[index] === 0x8e;
+    }
+    return data[index] === 0x8f;
+  }
+
   /**
    * Scales a shape according to the given scale factor
    * @param shape - The shape to scale
@@ -117,7 +171,8 @@ export class ShxShapeParser {
   private scaleShapeByFactor(shape: ShxShape, factor: number): ShxShape {
     return new ShxShape(
       shape.lastPoint?.clone().multiply(factor),
-      shape.polylines.map(line => line.map(point => point.clone().multiply(factor)))
+      shape.polylines.map(line => line.map(point => point.clone().multiply(factor))),
+      shape.hasExplicitAdvance
     );
   }
 
@@ -152,7 +207,47 @@ export class ShxShapeParser {
       })
     );
 
-    return new ShxShape(scaledLastPoint, scaledPolylines);
+    return new ShxShape(scaledLastPoint, scaledPolylines, shape.hasExplicitAdvance);
+  }
+
+  /** Marks that bytecode explicitly defines horizontal advance. */
+  private markAdvanceDefined(state: ParseState): void {
+    state.hasExplicitAdvance = true;
+  }
+
+  /** Records a terminal pen-up XY move (codes 8/9). */
+  private notePenUpPositioning(state: ParseState): void {
+    state.pendingTerminalAdvance = true;
+  }
+
+  /** Clears a pending advance when later bytecode supersedes the prior XY move. */
+  private clearPendingAdvance(state: ParseState): void {
+    state.pendingTerminalAdvance = false;
+  }
+
+  private stateHasInk(state: ParseState): boolean {
+    if (state.currentPolyline.length > 1) {
+      return true;
+    }
+    return state.polylines.some(line => line.length >= 2);
+  }
+
+  /**
+   * Confirms terminal pen-up XY (codes 8/9) as advance definition.
+   * Ignores closure moves that return to the origin after drawing (e.g. txt `A`).
+   */
+  private finalizeAdvanceFlag(state: ParseState): void {
+    if (!state.pendingTerminalAdvance) {
+      return;
+    }
+    const x = state.currentPoint.x;
+    if (Math.abs(x) > ADVANCE_EPSILON) {
+      state.hasExplicitAdvance = true;
+      return;
+    }
+    if (!this.stateHasInk(state)) {
+      state.hasExplicitAdvance = true;
+    }
   }
 
   /**
@@ -174,7 +269,7 @@ export class ShxShapeParser {
       currentPolyline.push(currentPoint.clone());
     }
 
-    const state = {
+    const state: ParseState = {
       currentPoint,
       polylines,
       currentPolyline,
@@ -185,6 +280,8 @@ export class ShxShapeParser {
       // primitives and inherited-pen unifont subshapes (amgdt %%132) opt in
       // via flushOnEnd; bigfont subshape cache keeps flush off to avoid regressions.
       flushEndPolyline: options.flushOnEnd ?? false,
+      hasExplicitAdvance: false,
+      pendingTerminalAdvance: false,
     };
 
     for (let i = 0; i < data.length; i++) {
@@ -193,24 +290,21 @@ export class ShxShapeParser {
       if (cb <= 0x0f) {
         i = this.handleSpecialCommand(cb, data, i, state);
       } else {
+        this.clearPendingAdvance(state);
         this.handleVectorCommand(cb, state);
       }
     }
 
+    this.finalizeAdvanceFlag(state);
     return this.buildShapeFromState(state);
   }
-
   /** Builds a shape result, including any trailing pen-down polyline. */
-  private buildShapeFromState(state: {
-    currentPoint: Point;
-    polylines: Point[][];
-    currentPolyline: Point[];
-  }): ShxShape {
+  private buildShapeFromState(state: ParseState): ShxShape {
     const polylines = state.polylines.map(line => line.map(p => p.clone()));
     if (state.currentPolyline.length > 1) {
       polylines.push(state.currentPolyline.map(p => p.clone()));
     }
-    return new ShxShape(state.currentPoint.clone(), polylines);
+    return new ShxShape(state.currentPoint.clone(), polylines, state.hasExplicitAdvance);
   }
 
   /**
@@ -226,20 +320,13 @@ export class ShxShapeParser {
     command: number,
     data: Uint8Array,
     index: number,
-    state: {
-      currentPoint: Point;
-      polylines: Point[][];
-      currentPolyline: Point[];
-      sp: Point[];
-      isPenDown: boolean;
-      scale: number;
-      flushEndPolyline?: boolean;
-    }
+    state: ParseState
   ): number {
     let i = index;
 
     switch (command) {
       case 0: // End of shape definition
+        this.finalizeAdvanceFlag(state);
         if (state.flushEndPolyline && state.currentPolyline.length > 1) {
           state.polylines.push(state.currentPolyline.slice());
           state.currentPolyline = [];
@@ -249,6 +336,7 @@ export class ShxShapeParser {
         state.isPenDown = false;
         break;
       case 1: // Activate Draw mode (pen down)
+        this.clearPendingAdvance(state);
         if (!state.isPenDown) {
           state.currentPolyline.push(state.currentPoint.clone());
         }
@@ -262,20 +350,24 @@ export class ShxShapeParser {
         state.currentPolyline = [];
         break;
       case 3: // Divide vector lengths
+        this.clearPendingAdvance(state);
         i++;
         state.scale /= data[i];
         break;
       case 4: // Multiply vector lengths
+        this.clearPendingAdvance(state);
         i++;
         state.scale *= data[i];
         break;
       case 5: // Push current location
+        this.clearPendingAdvance(state);
         if (state.sp.length === 4) {
           throw new Error('The position stack is only four locations deep');
         }
         state.sp.push(state.currentPoint.clone());
         break;
       case 6: // Pop current location
+        this.clearPendingAdvance(state);
         state.currentPoint = (state.sp.pop() as Point) ?? state.currentPoint;
         if (state.currentPolyline.length > 1) {
           state.polylines.push(state.currentPolyline.slice());
@@ -286,6 +378,7 @@ export class ShxShapeParser {
         }
         break;
       case 7: // Draw subshape
+        this.clearPendingAdvance(state);
         i = this.handleSubshapeCommand(data, i, state);
         break;
       case 8: // X-Y displacement
@@ -295,24 +388,30 @@ export class ShxShapeParser {
         i = this.handleMultipleXYDisplacements(data, i, state);
         break;
       case 10: // Octant arc
+        this.clearPendingAdvance(state);
         i = this.handleOctantArc(data, i, state);
         break;
       case 11: // Fractional arc
+        this.clearPendingAdvance(state);
         i = this.handleFractionalArc(data, i, state);
         break;
       case 12: // Arc with bulge
+        this.clearPendingAdvance(state);
         i = this.handleBulgeArc(data, i, state);
         break;
       case 13: // Multiple bulge arcs
+        this.clearPendingAdvance(state);
         i = this.handleMultipleBulgeArcs(data, i, state);
         break;
       case 14: // Vertical-only command
+        this.clearPendingAdvance(state);
         // https://help.autodesk.com/view/OARX/2023/ENU/?guid=GUID-06832147-16BE-4A66-A6D0-3ADF98DC8228
-        // Vertical SHAPES/UNIFONT (e.g. amgdt.shx) execute the next command; bigfont
-        // files such as extfont2.shx are vertical but still skip it.
+        // Dual-orientation bigfonts (modes = 2) execute the next command. Other bigfonts
+        // (extfont2-style) and horizontal fonts skip it.
         if (
           this.fontData.content.orientation === 'horizontal' ||
-          this.fontData.header.fontType === ShxFontType.BIGFONT
+          (this.fontData.header.fontType === ShxFontType.BIGFONT &&
+            !this.fontData.content.verticalDualMode)
         ) {
           i = this.skipCode(data, ++i);
         }
@@ -322,15 +421,7 @@ export class ShxShapeParser {
     return i;
   }
 
-  private handleVectorCommand(
-    command: number,
-    state: {
-      currentPoint: Point;
-      currentPolyline: Point[];
-      scale: number;
-      isPenDown: boolean;
-    }
-  ): void {
+  private handleVectorCommand(command: number, state: ParseState): void {
     const len = (command & 0xf0) >> 4;
     const dir = command & 0x0f;
     const vec = this.getVectorForDirection(dir);
@@ -414,17 +505,7 @@ export class ShxShapeParser {
     return vec;
   }
 
-  private handleSubshapeCommand(
-    data: Uint8Array,
-    index: number,
-    state: {
-      currentPoint: Point;
-      polylines: Point[][];
-      currentPolyline: Point[];
-      scale: number;
-      isPenDown: boolean;
-    }
-  ): number {
+  private handleSubshapeCommand(data: Uint8Array, index: number, state: ParseState): number {
     let i = index;
     let subCode = 0;
     let shape;
@@ -445,6 +526,12 @@ export class ShxShapeParser {
         break;
       case ShxFontType.BIGFONT:
         i++;
+        if (this.isVerticalDualBigfontMarker(data, i, 'open')) {
+          return i;
+        }
+        if (this.isVerticalDualBigfontMarker(data, i, 'close')) {
+          return i + 1;
+        }
         subCode = data[i];
         // How to parse subcode here?
         //
@@ -532,6 +619,9 @@ export class ShxShapeParser {
           state.polylines.push(...shape.polylines.slice());
           if (shape.lastPoint) {
             state.currentPoint = shape.lastPoint.clone();
+            if (shape.hasExplicitAdvance) {
+              this.markAdvanceDefined(state);
+            }
           }
         }
         state.currentPolyline = [];
@@ -555,6 +645,7 @@ export class ShxShapeParser {
             if (cellWidth > state.currentPoint.x) {
               state.currentPoint.x = cellWidth;
             }
+            this.markAdvanceDefined(state);
           }
         }
         state.currentPolyline = [];
@@ -566,16 +657,7 @@ export class ShxShapeParser {
     return i;
   }
 
-  private handleXYDisplacement(
-    data: Uint8Array,
-    index: number,
-    state: {
-      currentPoint: Point;
-      currentPolyline: Point[];
-      scale: number;
-      isPenDown: boolean;
-    }
-  ): number {
+  private handleXYDisplacement(data: Uint8Array, index: number, state: ParseState): number {
     let i = index;
     const vec = new Point();
     vec.x = ShxFileReader.byteToSByte(data[++i]);
@@ -583,6 +665,8 @@ export class ShxShapeParser {
     state.currentPoint.add(vec.multiply(state.scale));
     if (state.isPenDown) {
       state.currentPolyline.push(state.currentPoint.clone());
+    } else {
+      this.notePenUpPositioning(state);
     }
     return i;
   }
@@ -590,15 +674,13 @@ export class ShxShapeParser {
   private handleMultipleXYDisplacements(
     data: Uint8Array,
     index: number,
-    state: {
-      currentPoint: Point;
-      currentPolyline: Point[];
-      scale: number;
-      isPenDown: boolean;
-    }
+    state: ParseState
   ): number {
     let i = index;
     while (true) {
+      if (i + 1 >= data.length) {
+        break;
+      }
       const vec = new Point();
       vec.x = ShxFileReader.byteToSByte(data[++i]);
       vec.y = ShxFileReader.byteToSByte(data[++i]);
@@ -608,21 +690,14 @@ export class ShxShapeParser {
       state.currentPoint.add(vec.multiply(state.scale));
       if (state.isPenDown) {
         state.currentPolyline.push(state.currentPoint.clone());
+      } else {
+        this.notePenUpPositioning(state);
       }
     }
     return i;
   }
 
-  private handleOctantArc(
-    data: Uint8Array,
-    index: number,
-    state: {
-      currentPoint: Point;
-      currentPolyline: Point[];
-      scale: number;
-      isPenDown: boolean;
-    }
-  ): number {
+  private handleOctantArc(data: Uint8Array, index: number, state: ParseState): number {
     let i = index;
     const radius = data[++i] * state.scale;
     const flag = ShxFileReader.byteToSByte(data[++i]);
@@ -645,16 +720,7 @@ export class ShxShapeParser {
     return i;
   }
 
-  private handleFractionalArc(
-    data: Uint8Array,
-    index: number,
-    state: {
-      currentPoint: Point;
-      currentPolyline: Point[];
-      scale: number;
-      isPenDown: boolean;
-    }
-  ): number {
+  private handleFractionalArc(data: Uint8Array, index: number, state: ParseState): number {
     let i = index;
     const startOffset = data[++i];
     const endOffset = data[++i];
@@ -722,16 +788,7 @@ export class ShxShapeParser {
     return i;
   }
 
-  private handleBulgeArc(
-    data: Uint8Array,
-    index: number,
-    state: {
-      currentPoint: Point;
-      currentPolyline: Point[];
-      scale: number;
-      isPenDown: boolean;
-    }
-  ): number {
+  private handleBulgeArc(data: Uint8Array, index: number, state: ParseState): number {
     let i = index;
     const vec = new Point();
     vec.x = ShxFileReader.byteToSByte(data[++i]);
@@ -748,22 +805,19 @@ export class ShxShapeParser {
     return i;
   }
 
-  private handleMultipleBulgeArcs(
-    data: Uint8Array,
-    index: number,
-    state: {
-      currentPoint: Point;
-      currentPolyline: Point[];
-      scale: number;
-      isPenDown: boolean;
-    }
-  ): number {
+  private handleMultipleBulgeArcs(data: Uint8Array, index: number, state: ParseState): number {
     let i = index;
     while (true) {
+      if (i + 1 >= data.length) {
+        break;
+      }
       const vec = new Point();
       vec.x = ShxFileReader.byteToSByte(data[++i]);
       vec.y = ShxFileReader.byteToSByte(data[++i]);
       if (vec.x === 0 && vec.y === 0) {
+        break;
+      }
+      if (i + 1 >= data.length) {
         break;
       }
       const bulge = ShxFileReader.byteToSByte(data[++i]);
@@ -804,13 +858,19 @@ export class ShxShapeParser {
           case ShxFontType.BIGFONT:
             {
               index++;
-              const subCode = data[index];
-              if (subCode === 0) {
-                // Skip primitive#, basepoint-x, basepoint-y, width/height
-                // primitive# is 2 bytes, basepoint-x 1, basepoint-y 1,
-                // extended fonts have both width and height (2 bytes),
-                // non-extended have only height (1 byte)
-                index += this.fontData.content.isExtended ? 6 : 5;
+              if (this.isVerticalDualBigfontMarker(data, index, 'open')) {
+                index++;
+              } else if (this.isVerticalDualBigfontMarker(data, index, 'close')) {
+                index += 2;
+              } else {
+                const subCode = data[index];
+                if (subCode === 0) {
+                  // Skip primitive#, basepoint-x, basepoint-y, width/height
+                  // primitive# is 2 bytes, basepoint-x 1, basepoint-y 1,
+                  // extended fonts have both width and height (2 bytes),
+                  // non-extended have only height (1 byte)
+                  index += this.fontData.content.isExtended ? 6 : 5;
+                }
               }
             }
             break;
@@ -826,8 +886,16 @@ export class ShxShapeParser {
         {
           const tmp = true;
           while (tmp) {
-            const x = data[++index];
-            const y = data[++index];
+            index++;
+            if (index >= data.length) {
+              break;
+            }
+            const x = data[index];
+            index++;
+            if (index >= data.length) {
+              break;
+            }
+            const y = data[index];
             if (x === 0 && y === 0) {
               break;
             }
@@ -847,8 +915,16 @@ export class ShxShapeParser {
         {
           const tmp = true;
           while (tmp) {
-            const x = data[++index];
-            const y = data[++index];
+            index++;
+            if (index >= data.length) {
+              break;
+            }
+            const x = data[index];
+            index++;
+            if (index >= data.length) {
+              break;
+            }
+            const y = data[index];
             if (x === 0 && y === 0) {
               break;
             }

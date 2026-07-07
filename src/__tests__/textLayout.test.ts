@@ -21,10 +21,16 @@ function makeFontData(fontType: ShxFontType): ShxFontData {
   };
 }
 
-function makeShape(lastX: number, minX = 0, maxX = lastX, lastPoint?: Point): ShxShape {
+function makeShape(
+  lastX: number,
+  minX = 0,
+  maxX = lastX,
+  lastPoint?: Point,
+  hasExplicitAdvance = false
+): ShxShape {
   return new ShxShape(lastPoint ?? new Point(lastX, 0), [
     [new Point(minX, 0), new Point(maxX, 0)],
-  ]);
+  ], hasExplicitAdvance || lastX !== 0);
 }
 
 function makeMockFont(getShape: () => ShxShape | undefined): ShxFont {
@@ -50,30 +56,52 @@ function makeMockFont(getShape: () => ShxShape | undefined): ShxFont {
 
 describe('textLayout', () => {
   describe('resolveAdvanceWidth', () => {
-    it('returns pen advance for layout-ready unifont glyphs', () => {
+    it('returns explicit advance for layout-ready unifont glyphs', () => {
       const fontData = makeFontData(ShxFontType.UNIFONT);
       const size = 16;
       const shape = makeShape(4, 0, 2);
       expect(resolveAdvanceWidth(shape, fontData, size)).toBe(4);
     });
 
-    it('falls back to cell width for compact monospace unifonts without pen advance', () => {
+    it('falls back to full cell for compact unifonts without defined advance', () => {
       const fontData = makeFontData(ShxFontType.UNIFONT);
       fontData.content.width = 8;
       fontData.content.height = 8;
       const size = 16;
       const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
       const shape = new ShxShape(undefined, [[new Point(0, 0), new Point(2, 0)]]);
+      expect(resolveAdvanceWidth(shape, fontData, size)).toBe(cellWidth);
+    });
+
+    it('falls back to full cell for compact unifonts with zero ink', () => {
+      const fontData = makeFontData(ShxFontType.UNIFONT);
+      fontData.content.width = 8;
+      fontData.content.height = 8;
+      const size = 16;
+      const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
+      const shape = new ShxShape(undefined, []);
       expect(resolveAdvanceWidth(shape, fontData, size)).toBeCloseTo(cellWidth);
     });
 
-    it('falls back to ink extent for proportional unifonts without pen advance', () => {
+    it('falls back to full cell for aehalf without defined advance', () => {
+      const fontData = makeFontData(ShxFontType.UNIFONT);
+      fontData.content.width = 8;
+      fontData.content.height = 8;
+      fontData.content.data[65] = new Uint8Array([3, 17, 2, 0]);
+      const size = 16;
+      const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
+      const shape = new ShxShape(undefined, []);
+      expect(resolveAdvanceWidth(shape, fontData, size)).toBeCloseTo(cellWidth);
+    });
+
+    it('falls back to cell width for proportional unifonts without defined advance', () => {
       const fontData = makeFontData(ShxFontType.UNIFONT);
       fontData.content.width = 33;
       fontData.content.height = 33;
       const size = 16;
+      const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
       const shape = new ShxShape(undefined, [[new Point(0, 0), new Point(2, 0)]]);
-      expect(resolveAdvanceWidth(shape, fontData, size)).toBe(2);
+      expect(resolveAdvanceWidth(shape, fontData, size)).toBe(cellWidth);
     });
 
     it('uses full cell width for bigfont glyphs', () => {
@@ -84,15 +112,36 @@ describe('textLayout', () => {
       expect(resolveAdvanceWidth(shape, fontData, size)).toBeCloseTo(cellWidth);
     });
 
-    it('preserves explicit pen advance for proportional unifonts', () => {
+    it('preserves explicit advance for proportional unifonts', () => {
       const fontData = makeFontData(ShxFontType.UNIFONT);
       fontData.content.width = 33;
       fontData.content.height = 33;
       const size = 16;
-      const smallSymbol = new ShxShape(new Point(0.714, 0), [
-        [new Point(0, 4), new Point(0.714, 4.714)],
-      ]);
+      const smallSymbol = new ShxShape(
+        new Point(0.714, 0),
+        [[new Point(0, 4), new Point(0.714, 4.714)]],
+        true
+      );
       expect(resolveAdvanceWidth(smallSymbol, fontData, size)).toBeCloseTo(0.714);
+    });
+
+    it('falls back to cell width when pen-down endpoint is non-zero', () => {
+      const fontData = makeFontData(ShxFontType.UNIFONT);
+      fontData.content.width = 8;
+      fontData.content.height = 8;
+      const size = 16;
+      const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
+      const shape = new ShxShape(new Point(2, 0), [[new Point(-1, -4), new Point(1, 0)]]);
+      expect(resolveAdvanceWidth(shape, fontData, size)).toBeCloseTo(cellWidth);
+    });
+
+    it('uses explicit zero advance for advance-only glyphs', () => {
+      const fontData = makeFontData(ShxFontType.UNIFONT);
+      fontData.content.width = 8;
+      fontData.content.height = 8;
+      const size = 16;
+      const shape = new ShxShape(new Point(0, 0), [], true);
+      expect(resolveAdvanceWidth(shape, fontData, size)).toBe(0);
     });
   });
 

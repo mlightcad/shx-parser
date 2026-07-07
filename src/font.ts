@@ -9,8 +9,8 @@ import { ShxShape } from './shape';
 export {
   alignShxGlyphForLayout,
   computeFontMetrics,
-  isCompactMonospaceUnifont,
-  resolveUnifontFallbackPen,
+  resolveShapeAdvance,
+  shapeEncodedWithTopOrigin,
   type ShxFontMetrics,
 } from './glyphLayout';
 

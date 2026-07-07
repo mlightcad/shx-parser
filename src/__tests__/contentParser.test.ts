@@ -127,6 +127,49 @@ describe('contentParser', () => {
       expect(content.data[0]).toEqual(infoBlock);
       expect(content.isExtended).toBe(true);
     });
+
+    it('parses short non-extended metrics after a double null terminator', () => {
+      const header = 'AutoCAD-86 bigfont V1.0\r\n\x1a';
+      const glyph = new Uint8Array([0x80, 0x00]);
+      const infoBlock = new Uint8Array([
+        ...new TextEncoder().encode('GBCBig'),
+        0x00,
+        0x00,
+        64,
+        2,
+        0,
+      ]);
+      const indexBytes = 6 + 8;
+      const buffer = new ArrayBuffer(header.length + indexBytes + glyph.length + infoBlock.length);
+      const bytes = new Uint8Array(buffer);
+      bytes.set(new TextEncoder().encode(header), 0);
+      const view = new DataView(buffer);
+      let o = header.length;
+      view.setInt16(o, 0, true);
+      o += 2;
+      view.setInt16(o, 1, true);
+      o += 2;
+      view.setInt16(o, 0, true);
+      o += 2;
+      view.setUint16(o, 0, true);
+      o += 2;
+      view.setUint16(o, infoBlock.length, true);
+      o += 2;
+      view.setUint32(o, header.length + indexBytes, true);
+      o += 4;
+      bytes.set(infoBlock, o);
+
+      const reader = new ShxFileReader(buffer);
+      reader.setPosition(header.length);
+      const content = ShxContentParserFactory.createParser(ShxFontType.BIGFONT).parse(reader);
+      expect(content.baseUp).toBe(64);
+      expect(content.baseDown).toBe(0);
+      expect(content.height).toBe(64);
+      expect(content.width).toBe(64);
+      expect(content.orientation).toBe('vertical');
+      expect(content.isExtended).toBe(true);
+      expect(content.verticalDualMode).toBe(true);
+    });
   });
 
   describe('ShxUnifontContentParser', () => {

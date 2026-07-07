@@ -1,13 +1,8 @@
 import { ShxFont } from './font';
-import { computeFontMetrics, isCompactMonospaceUnifont } from './glyphLayout';
-import { ShxFontData, ShxFontType } from './fontData';
+import { computeFontMetrics, resolveShapeAdvance } from './glyphLayout';
+import { ShxFontData } from './fontData';
 import { Point } from './point';
 import { ShxShape } from './shape';
-
-const ADVANCE_EPSILON = 1e-6;
-
-/** Wide proportional unifont symbols expand advance to the full cell width. */
-const PROPORTIONAL_UNIFONT_CELL_WIDTH_RATIO = 0.25;
 
 /** A glyph positioned on a text line. */
 export interface PlacedGlyph {
@@ -25,10 +20,10 @@ export interface TextRunGlyph {
 }
 
 /**
- * Returns the horizontal advance width of a scaled glyph.
+ * Returns the horizontal advance width stored on a scaled glyph.
  *
- * Uses the pen-up vector from the SHX shape definition when present; otherwise falls
- * back to the glyph bounding box width.
+ * Uses {@link ShxShape.lastPoint}.x when present; otherwise falls back to ink width.
+ * Prefer {@link resolveAdvanceWidth} for layout, which applies cell-width fallback.
  */
 export function getAdvanceWidth(shape: ShxShape): number {
   if (shape.lastPoint) {
@@ -41,8 +36,9 @@ export function getAdvanceWidth(shape: ShxShape): number {
 /**
  * Resolves the horizontal advance for a layout-ready glyph.
  *
- * Prefer glyphs from {@link ShxFont.getLayoutCharShape} so pen vectors and baseline
- * alignment already reflect {@link computeFontMetrics}.
+ * When the SHX bytecode defines advance ({@link ShxShape.hasExplicitAdvance}) or the
+ * final pen X is non-zero, uses {@link ShxShape.lastPoint}.x; otherwise falls back to
+ * the font cell width from shape #0.
  *
  * @param shape - Scaled glyph geometry, typically from {@link ShxFont.getLayoutCharShape}
  * @param fontData - Parsed font header and content
@@ -50,34 +46,7 @@ export function getAdvanceWidth(shape: ShxShape): number {
  */
 export function resolveAdvanceWidth(shape: ShxShape, fontData: ShxFontData, size: number): number {
   const metrics = computeFontMetrics(fontData.content, size);
-  const penAdvance = getAdvanceWidth(shape);
-  const fontType = fontData.header.fontType;
-
-  if (fontType === ShxFontType.UNIFONT) {
-    const penAdvance = shape.lastPoint?.x ?? 0;
-    if (penAdvance <= ADVANCE_EPSILON) {
-      if (isCompactMonospaceUnifont(fontData.content)) {
-        return metrics.cellWidth;
-      }
-      return shape.bbox.maxX - shape.bbox.minX;
-    }
-    if (shape.bbox.maxX < metrics.cellWidth * PROPORTIONAL_UNIFONT_CELL_WIDTH_RATIO) {
-      return penAdvance;
-    }
-    const inkExtent = Math.max(shape.bbox.maxX - shape.bbox.minX, shape.bbox.maxX);
-    if (inkExtent > penAdvance + ADVANCE_EPSILON) {
-      return Math.max(penAdvance, metrics.cellWidth);
-    }
-    return penAdvance;
-  }
-
-  if (fontType === ShxFontType.BIGFONT) {
-    const bboxWidth = shape.bbox.maxX - shape.bbox.minX;
-    return Math.max(bboxWidth, penAdvance, metrics.cellWidth);
-  }
-
-  const bboxWidth = shape.bbox.maxX - shape.bbox.minX;
-  return penAdvance > ADVANCE_EPSILON ? penAdvance : bboxWidth;
+  return resolveShapeAdvance(shape, metrics.cellWidth);
 }
 
 /**

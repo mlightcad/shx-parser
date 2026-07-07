@@ -46,6 +46,44 @@ describe('special shape codes (0–14)', () => {
         font.release();
       }
     });
+
+    it('does not mark hasExplicitAdvance when terminal XY closes the path at origin', () => {
+      const bytecode = new Uint8Array([
+        0x01, // pen down
+        0x80, // draw 8 east
+        0x02, // pen up
+        0x08, // xy displacement back to origin (path closure, not advance)
+        sbyte(-8),
+        0,
+        0x00,
+      ]);
+      const font = createTestFont({ shapes: { 1: bytecode }, isTextFont: true });
+      try {
+        const shape = getShape(font, 1, 10);
+        expect(shape!.lastPoint!.x).toBeCloseTo(0);
+        expect(shape!.hasExplicitAdvance).toBe(false);
+      } finally {
+        font.release();
+      }
+    });
+
+    it('marks hasExplicitAdvance for advance-only terminal XY moves', () => {
+      const bytecode = new Uint8Array([
+        0x02, // pen up
+        0x08, // xy displacement without drawing
+        6,
+        0,
+        0x00,
+      ]);
+      const font = createTestFont({ shapes: { 1: bytecode }, isTextFont: true });
+      try {
+        const shape = getShape(font, 1, 10);
+        expect(shape!.lastPoint!.x).toBeCloseTo(6);
+        expect(shape!.hasExplicitAdvance).toBe(true);
+      } finally {
+        font.release();
+      }
+    });
   });
 
   describe('codes 3, 4 — scale control', () => {

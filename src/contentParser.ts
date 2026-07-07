@@ -1,5 +1,5 @@
 import { ShxFileReader } from './fileReader';
-import { ShxFontContentData, ShxFontType } from './fontData';
+import { Orientation, ShxFontContentData, ShxFontType } from './fontData';
 
 const DEFAULT_FONT_SIZE = 10;
 
@@ -196,26 +196,15 @@ class ShxBigfontContentParser implements ShxContentParser {
         const infoData = data[0];
         try {
           const info = this.utf8ArrayToStr(infoData);
-          let index = info.pos;
-          if (index >= 0) {
-            fontData.info = info.text;
-            index++;
-            if (index + 3 < infoData.length) {
-              if (infoData.length - index > 4) {
-                fontData.height = infoData[index++];
-                index++;
-                fontData.orientation = infoData[index++] === 0 ? 'horizontal' : 'vertical';
-                fontData.width = infoData[index++];
-                fontData.baseUp = fontData.height;
-                fontData.baseDown = 0;
-                fontData.isExtended = true;
-              } else {
-                fontData.baseUp = infoData[index++];
-                fontData.baseDown = infoData[index++];
-                fontData.height = fontData.baseDown + fontData.baseUp;
-                fontData.width = fontData.height;
-                fontData.orientation = infoData[index] === 0 ? 'horizontal' : 'vertical';
-              }
+          if (info.pos >= 0) {
+            let infoText = info.text;
+            while (infoText.length > 0 && infoText.charCodeAt(infoText.length - 1) === 0) {
+              infoText = infoText.slice(0, -1);
+            }
+            fontData.info = infoText;
+            const metrics = this.parseBigfontMetrics(infoData, info.pos + 1);
+            if (metrics) {
+              Object.assign(fontData, metrics);
             }
           }
         } catch {
@@ -228,6 +217,104 @@ class ShxBigfontContentParser implements ShxContentParser {
       const message = e instanceof Error ? e.message : String(e);
       throw new Error(`Failed to parse big font: ${message}`);
     }
+  }
+
+  private parseBigfontMetrics(
+    infoData: Uint8Array,
+    startIndex: number
+  ): Pick<
+    ShxFontContentData,
+    | 'baseUp'
+    | 'baseDown'
+    | 'height'
+    | 'width'
+    | 'orientation'
+    | 'isExtended'
+    | 'verticalDualMode'
+  > | null {
+    let index = startIndex;
+    while (index < infoData.length && infoData[index] === 0) {
+      index++;
+    }
+
+    const remaining = infoData.length - index;
+    if (remaining <= 0) {
+      return null;
+    }
+
+    const readOrientation = (modes: number): Orientation =>
+      modes === 0 ? 'horizontal' : 'vertical';
+
+    // Extended: character-height, 0, modes, character-width, [0]
+    if (remaining >= 5) {
+      const height = infoData[index++];
+      index++;
+      const orientation = readOrientation(infoData[index++]);
+      const width = infoData[index++];
+      return {
+        baseUp: height,
+        baseDown: 0,
+        height,
+        width,
+        orientation,
+        isExtended: true,
+      };
+    }
+
+    if (
+      remaining === 4 &&
+      infoData[index + 1] === 0 &&
+      infoData[index + 3] > 0 &&
+      infoData[index + 3] !== infoData[index]
+    ) {
+      const height = infoData[index++];
+      index++;
+      const orientation = readOrientation(infoData[index++]);
+      const width = infoData[index];
+      return {
+        baseUp: height,
+        baseDown: 0,
+        height,
+        width,
+        orientation,
+        isExtended: true,
+      };
+    }
+
+    // Non-extended: above, below, modes, [0]
+    if (remaining === 4) {
+      const baseUp = infoData[index++];
+      const baseDown = infoData[index++];
+      const orientation = readOrientation(infoData[index++]);
+      return {
+        baseUp,
+        baseDown,
+        height: baseUp + baseDown,
+        width: baseUp + baseDown,
+        orientation,
+        isExtended: false,
+      };
+    }
+
+    // Short non-extended tail seen in gbcbig.shx: above, modes, [0]
+    if (remaining === 3) {
+      const baseUp = infoData[index++];
+      const modes = infoData[index++];
+      const orientation = readOrientation(modes);
+      const verticalDualMode = modes === 2;
+      return {
+        baseUp,
+        baseDown: 0,
+        height: baseUp,
+        width: baseUp,
+        orientation,
+        // Dual-orientation vertical bigfonts (modes=2) use composite bytecode.
+        isExtended: verticalDualMode,
+        verticalDualMode,
+      };
+    }
+
+    return null;
   }
 
   private utf8ArrayToStr(array: Uint8Array) {
