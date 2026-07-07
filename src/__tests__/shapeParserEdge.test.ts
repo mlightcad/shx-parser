@@ -103,28 +103,70 @@ describe('shapeParser edge cases', () => {
     }
   });
 
-  it('handles bigfont subshape skip path for code 14 in horizontal fonts', () => {
+  it('executes gbcbig-style dual-orientation frame setup (7,8e push pen-up xy)', () => {
+    // Matches gbcbig "zhong" (0xD6D0) prologue: 7,-114,5,2,8,(12,62)
     const bytecode = new Uint8Array([
-      0x0e,
       0x07,
-      0x00,
-      0x00,
+      0x8e,
+      0x05,
+      0x02,
+      0x08,
+      12,
+      62,
       0x01,
+      0x44, // pen down, draw 4 north
+      0x07,
+      0x8f,
       0x00,
-      0x00,
-      0x08,
-      0x08,
-      0x44,
       0x00,
     ]);
     const font = createTestFont({
       fontType: ShxFontType.BIGFONT,
-      shapes: { 100: bytecode, 1: new Uint8Array([0x80, 0x00]) },
+      shapes: { 0xd6d0: bytecode },
       isExtended: true,
-      height: 8,
+      verticalDualMode: true,
+      orientation: 'vertical',
+      height: 64,
+      width: 64,
     });
     try {
-      expect(getShape(font, 100, 16)).toBeDefined();
+      const shape = getShape(font, 0xd6d0, 64)!;
+      expect(shape.lastPoint!.x).toBeCloseTo(12);
+      expect(shape.lastPoint!.y).toBeCloseTo(66);
+      expect(totalVertexCount(shape)).toBeGreaterThan(0);
+    } finally {
+      font.release();
+    }
+  });
+
+  it('does not hang on gbcbig-style xy bytes 0x0e/0x0d after frame setup', () => {
+    const bytecode = new Uint8Array([
+      0x07,
+      0x8e,
+      0x05,
+      0x02,
+      0x08,
+      0x0e,
+      0x0d,
+      0x01,
+      0x08,
+      sbyte(-9),
+      sbyte(-12),
+      0x07,
+      0x8f,
+      0x00,
+      0x00,
+    ]);
+    const font = createTestFont({
+      fontType: ShxFontType.BIGFONT,
+      shapes: { 53415: bytecode },
+      isExtended: true,
+      verticalDualMode: true,
+      orientation: 'vertical',
+      height: 64,
+    });
+    try {
+      expect(getShape(font, 53415, 12)).toBeDefined();
     } finally {
       font.release();
     }

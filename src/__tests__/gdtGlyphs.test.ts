@@ -1,12 +1,20 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { ShxFont } from '../font';
+import { ShxFont, alignShxGlyphForLayout } from '../font';
 
 async function loadGdtFont(): Promise<ShxFont> {
   const localPath = join(process.cwd(), 'examples', 'fonts', 'gdt.shx');
   const data = await readFile(localPath);
   return new ShxFont(data.buffer);
+}
+
+async function loadAmgdtFont(): Promise<ShxFont> {
+  const response = await fetch('https://cdn.jsdelivr.net/gh/mlightcad/cad-data/fonts/amgdt.shx');
+  if (!response.ok) {
+    throw new Error(`Failed to fetch amgdt.shx: ${response.status}`);
+  }
+  return new ShxFont(await response.arrayBuffer());
 }
 
 function polylineCenter(shape: NonNullable<ReturnType<ShxFont['getCharShape']>>, index: number) {
@@ -52,6 +60,26 @@ describe('GDT font glyphs (gdt.shx)', () => {
       expect(shape.bbox.maxY - shape.bbox.minY).toBeLessThan(size * 1.15);
     } finally {
       font.release();
+    }
+  }, 10_000);
+
+  it('layout aligns gdt glyphs with amgdt on the same baseline band', async () => {
+    const gdt = await loadGdtFont();
+    const amgdt = await loadAmgdtFont();
+    try {
+      const size = 10;
+      for (const code of [110, 114]) {
+        const gdtAligned = alignShxGlyphForLayout(gdt.getCharShape(code, size)!, gdt.fontData, size);
+        const amgdtAligned = alignShxGlyphForLayout(
+          amgdt.getCharShape(code, size)!,
+          amgdt.fontData,
+          size
+        );
+        expect(gdtAligned.bbox.minY).toBeCloseTo(amgdtAligned.bbox.minY, 1);
+      }
+    } finally {
+      gdt.release();
+      amgdt.release();
     }
   }, 10_000);
 });

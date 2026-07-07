@@ -1,9 +1,8 @@
-import { computeFontMetrics, ShxFont } from './font';
-import { ShxFontData, ShxFontType } from './fontData';
+import { ShxFont } from './font';
+import { computeFontMetrics, resolveShapeAdvance } from './glyphLayout';
+import { ShxFontData } from './fontData';
 import { Point } from './point';
 import { ShxShape } from './shape';
-
-const ADVANCE_EPSILON = 1e-6;
 
 /** A glyph positioned on a text line. */
 export interface PlacedGlyph {
@@ -21,10 +20,10 @@ export interface TextRunGlyph {
 }
 
 /**
- * Returns the horizontal advance width of a scaled glyph.
+ * Returns the horizontal advance width stored on a scaled glyph.
  *
- * Uses the pen-up vector from the SHX shape definition when present; otherwise falls
- * back to the glyph bounding box width.
+ * Uses {@link ShxShape.lastPoint}.x when present; otherwise falls back to ink width.
+ * Prefer {@link resolveAdvanceWidth} for layout, which applies cell-width fallback.
  */
 export function getAdvanceWidth(shape: ShxShape): number {
   if (shape.lastPoint) {
@@ -37,37 +36,17 @@ export function getAdvanceWidth(shape: ShxShape): number {
 /**
  * Resolves the horizontal advance for a layout-ready glyph.
  *
+ * When the SHX bytecode defines advance ({@link ShxShape.hasExplicitAdvance}) or the
+ * final pen X is non-zero, uses {@link ShxShape.lastPoint}.x; otherwise falls back to
+ * the font cell width from shape #0.
+ *
  * @param shape - Scaled glyph geometry, typically from {@link ShxFont.getLayoutCharShape}
  * @param fontData - Parsed font header and content
  * @param size - Target font size in drawing units
  */
 export function resolveAdvanceWidth(shape: ShxShape, fontData: ShxFontData, size: number): number {
-  const scaledCellWidth = computeFontMetrics(fontData.content, size).cellWidth;
-  const bboxWidth = shape.bbox.maxX - shape.bbox.minX;
-  const penAdvance = getAdvanceWidth(shape);
-  const bboxMaxX = shape.bbox.maxX;
-  const fontType = fontData.header.fontType;
-
-  if (bboxMaxX < scaledCellWidth * 0.25) {
-    return penAdvance;
-  }
-
-  if (fontType === ShxFontType.BIGFONT) {
-    return Math.max(bboxWidth, penAdvance, scaledCellWidth);
-  }
-
-  if (fontType === ShxFontType.UNIFONT) {
-    const inkExtent = Math.max(bboxWidth, bboxMaxX);
-    let advance = Math.max(penAdvance, inkExtent);
-    if (inkExtent > penAdvance + ADVANCE_EPSILON) {
-      advance = Math.max(advance, scaledCellWidth);
-    } else if (bboxMaxX < scaledCellWidth * 0.25) {
-      advance = Math.max(penAdvance, inkExtent);
-    }
-    return advance;
-  }
-
-  return penAdvance > 0 ? penAdvance : bboxWidth;
+  const metrics = computeFontMetrics(fontData.content, size);
+  return resolveShapeAdvance(shape, metrics.cellWidth);
 }
 
 /**

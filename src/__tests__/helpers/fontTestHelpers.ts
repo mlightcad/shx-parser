@@ -16,6 +16,7 @@ export interface TestFontOptions {
   width?: number;
   orientation?: 'horizontal' | 'vertical';
   isExtended?: boolean;
+  verticalDualMode?: boolean;
   shapeZeroInfo?: Uint8Array;
 }
 
@@ -52,6 +53,7 @@ export function createTestFont(options: TestFontOptions): ShxFont {
       height,
       width: options.width ?? height,
       isExtended: options.isExtended ?? false,
+      verticalDualMode: options.verticalDualMode,
     },
   };
 

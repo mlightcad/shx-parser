@@ -1,4 +1,5 @@
-import { ShxFont, alignShxGlyphForLayout } from '../font';
+import { ShxFont } from '../font';
+import { alignShxGlyphForLayout, computeFontMetrics } from '../glyphLayout';
 import { ShxFontData, ShxFontType } from '../fontData';
 import { Point } from '../point';
 import { ShxShape } from '../shape';
@@ -115,34 +116,41 @@ describe('ShxFont', () => {
   describe('alignShxGlyphForLayout', () => {
     const bigfontData = createBigFontData({ 1: new Uint8Array([0x01, 0x80, 0x02, 0x00]) });
 
-    it('normalizes mid-cell bigfont body glyphs to the origin', () => {
+    it('preserves bigfont glyph coordinates without per-glyph adjustment', () => {
       const size = 16;
       const shape = new ShxShape(new Point(8, 0), [
         [new Point(0, 4), new Point(8, 12)],
       ]);
       const aligned = alignShxGlyphForLayout(shape, bigfontData, size);
-      expect(aligned.bbox.minY).toBeCloseTo(0);
+      expect(aligned.bbox.minY).toBeCloseTo(4);
+      expect(aligned.bbox.maxY).toBeCloseTo(12);
     });
 
-    it('aligns bigfont top punctuation to the cap band', () => {
+    it('preserves bigfont punctuation positions', () => {
       const size = 16;
-      const shape = new ShxShape(new Point(8, 0), [
+      const topMark = new ShxShape(new Point(8, 0), [
         [new Point(2, 6), new Point(4, 8)],
       ]);
-      const aligned = alignShxGlyphForLayout(shape, bigfontData, size);
-      expect(aligned.bbox.maxY).toBeCloseTo(14);
-    });
-
-    it('lifts bigfont baseline punctuation to y=0', () => {
-      const size = 16;
-      const shape = new ShxShape(new Point(8, 0), [
+      const baselineMark = new ShxShape(new Point(8, 0), [
         [new Point(2, 2), new Point(4, 4)],
       ]);
-      const aligned = alignShxGlyphForLayout(shape, bigfontData, size);
-      expect(aligned.bbox.minY).toBeCloseTo(0);
+      const alignedTop = alignShxGlyphForLayout(topMark, bigfontData, size);
+      const alignedBaseline = alignShxGlyphForLayout(baselineMark, bigfontData, size);
+      expect(alignedTop.bbox.maxY).toBeCloseTo(8);
+      expect(alignedBaseline.bbox.minY).toBeCloseTo(2);
     });
 
-    it('normalizes unifont glyphs with negative Y to the baseline', () => {
+    it('preserves bigfont descender ink positions', () => {
+      const size = 16;
+      const shape = new ShxShape(new Point(8, 0), [
+        [new Point(-2, -2), new Point(6, 12)],
+      ]);
+      const aligned = alignShxGlyphForLayout(shape, bigfontData, size);
+      expect(aligned.bbox.minY).toBeCloseTo(-2);
+      expect(aligned.bbox.minX).toBeCloseTo(-2);
+    });
+
+    it('shifts unifont glyphs by capHeight from shape #0 metrics', () => {
       const unifontData: ShxFontData = {
         header: { fontType: ShxFontType.UNIFONT, fileHeader: 'test', fileVersion: '1.0' },
         content: {
@@ -157,14 +165,17 @@ describe('ShxFont', () => {
         },
       };
       const size = 16;
+      const metrics = computeFontMetrics(unifontData.content, size);
       const shape = new ShxShape(new Point(6, 0), [
         [new Point(0, -4), new Point(6, 0)],
       ]);
       const aligned = alignShxGlyphForLayout(shape, unifontData, size);
-      expect(aligned.bbox.minY).toBeCloseTo(0);
+      expect(aligned.bbox.minY).toBeCloseTo(-4 + metrics.capHeight);
+      expect(aligned.bbox.maxY).toBeCloseTo(metrics.capHeight);
+      expect(aligned.lastPoint?.x).toBeCloseTo(metrics.cellWidth);
     });
 
-    it('extends narrow unifont advance to ink extent', () => {
+    it('uses full cell width when compact unifont pen advance is missing', () => {
       const unifontData: ShxFontData = {
         header: { fontType: ShxFontType.UNIFONT, fileHeader: 'test', fileVersion: '1.0' },
         content: {
@@ -173,20 +184,21 @@ describe('ShxFont', () => {
           orientation: 'horizontal',
           baseUp: 8,
           baseDown: 2,
-          height: 10,
-          width: 10,
+          height: 8,
+          width: 8,
           isExtended: false,
         },
       };
       const size = 16;
-      const shape = new ShxShape(new Point(1, 0), [
-        [new Point(0, 2), new Point(1.5, 4)],
+      const metrics = computeFontMetrics(unifontData.content, size);
+      const shape = new ShxShape(undefined, [
+        [new Point(0, -4), new Point(6, 0)],
       ]);
       const aligned = alignShxGlyphForLayout(shape, unifontData, size);
-      expect(aligned.lastPoint?.x).toBeCloseTo(1.5);
+      expect(aligned.lastPoint?.x).toBeCloseTo(metrics.cellWidth);
     });
 
-    it('centers zero-height unifont strokes in the cap band', () => {
+    it('preserves explicit unifont pen advance from the SHX definition', () => {
       const unifontData: ShxFontData = {
         header: { fontType: ShxFontType.UNIFONT, fileHeader: 'test', fileVersion: '1.0' },
         content: {
@@ -201,12 +213,37 @@ describe('ShxFont', () => {
         },
       };
       const size = 16;
+      const shape = new ShxShape(
+        new Point(1, 0),
+        [[new Point(0, 2), new Point(1.5, 4)]],
+        true
+      );
+      const aligned = alignShxGlyphForLayout(shape, unifontData, size);
+      expect(aligned.lastPoint?.x).toBeCloseTo(1);
+    });
+
+    it('shifts zero-height unifont strokes by capHeight only', () => {
+      const unifontData: ShxFontData = {
+        header: { fontType: ShxFontType.UNIFONT, fileHeader: 'test', fileVersion: '1.0' },
+        content: {
+          data: {},
+          info: '',
+          orientation: 'horizontal',
+          baseUp: 8,
+          baseDown: 2,
+          height: 10,
+          width: 10,
+          isExtended: false,
+        },
+      };
+      const size = 16;
+      const metrics = computeFontMetrics(unifontData.content, size);
       const shape = new ShxShape(new Point(4, 0), [
         [new Point(2, 0), new Point(2, 0)],
       ]);
       const aligned = alignShxGlyphForLayout(shape, unifontData, size);
-      expect(aligned.bbox.minY).toBeGreaterThan(0);
-      expect(aligned.bbox.maxY).toBeLessThan(size);
+      expect(aligned.bbox.minY).toBeCloseTo(metrics.capHeight);
+      expect(aligned.bbox.maxY).toBeCloseTo(metrics.capHeight);
     });
   });
 

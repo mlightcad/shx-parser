@@ -229,6 +229,41 @@
             font-size: 16px;
             color: #333;
         }
+
+        .modal-frame-legend {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 8px;
+            font-size: 12px;
+            color: #666;
+        }
+
+        .modal-frame-legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .legend-swatch {
+            width: 14px;
+            height: 14px;
+            border: 1px solid red;
+            border-radius: 2px;
+        }
+
+        .legend-swatch-cap {
+            background: rgba(255, 0, 0, 0.06);
+        }
+
+        .legend-swatch-descender {
+            background: rgba(255, 0, 0, 0.14);
+        }
+
+        .legend-baseline {
+            width: 14px;
+            border-top: 2px dashed red;
+        }
     </style>
 </head>
 <body>
@@ -300,6 +335,11 @@
             <button class="modal-close">&times;</button>
             <div id="modalShape"></div>
             <div id="modalCharacterInfo" class="modal-character-info"></div>
+            <div id="modalFrameLegend" class="modal-frame-legend">
+                <span><i class="legend-swatch legend-swatch-cap"></i>capHeight</span>
+                <span><i class="legend-baseline"></i>baseline</span>
+                <span><i class="legend-swatch legend-swatch-descender"></i>descenderHeight</span>
+            </div>
         </div>
     </div>
 
@@ -324,6 +364,8 @@
                 this.modalShape = document.getElementById('modalShape');
                 this.modalCharacterInfo = document.getElementById('modalCharacterInfo');
                 this.font = null;
+                this.displaySize = 12;
+                this.glyphPreviewSettings = null;
                 const baseUrl = 'https://cdn.jsdelivr.net/gh/mlightcad/cad-data/';
                 this.fontBaseUrl = baseUrl + 'fonts/';
                 this.fontLibraryUrl = this.fontBaseUrl + 'fonts.json';
@@ -370,6 +412,7 @@
                 this.formatToggleContainer.style.display = 'none';
                 this.font = null;
                 this.allCharacterCells.clear();
+                this.glyphPreviewSettings = null;
                 this.codeSearch.value = '';
             }
 
@@ -474,7 +517,60 @@
                 document.getElementById('fontAdditionalInfo').textContent = content.info
             }
 
+            getGlyphPreviewSettings() {
+                if (this.glyphPreviewSettings) {
+                    return this.glyphPreviewSettings;
+                }
+
+                const metrics = this.font.getFontMetrics(this.displaySize);
+                const sampleCode = this.font.hasChar(65)
+                    ? 65
+                    : parseInt(Object.keys(this.font.fontData.content.data)[0], 10);
+                const sample = this.font.getCharShape(sampleCode, this.displaySize);
+                const usesTopOrigin =
+                    sample &&
+                    header.fontType === 'unifont' &&
+                    sample.bbox.maxY <= 1e-6 &&
+                    sample.bbox.minY < 0;
+
+                this.glyphPreviewSettings = {
+                    usesTopOrigin,
+                    fontCell: {
+                        width: metrics.cellWidth,
+                        capHeight: metrics.capHeight,
+                        descenderHeight: metrics.descenderHeight,
+                        origin: usesTopOrigin ? 'top' : 'baseline',
+                    },
+                };
+                return this.glyphPreviewSettings;
+            }
+
+            getPreviewCharShape(code) {
+                const { usesTopOrigin } = this.getGlyphPreviewSettings();
+                return usesTopOrigin
+                    ? this.font.getCharShape(code, this.displaySize)
+                    : this.font.getLayoutCharShape(code, this.displaySize);
+            }
+
+            getShapeSvgOptions() {
+                return { fontCell: this.getGlyphPreviewSettings().fontCell };
+            }
+
+            getModalShapeSvgOptions() {
+                return {
+                    fontCell: {
+                        ...this.getGlyphPreviewSettings().fontCell,
+                        expandToFit: true,
+                        showFrame: true,
+                    },
+                };
+            }
+
             getMarkerRadius(shape, scale = 1) {
+                if (this.font) {
+                    const metrics = this.font.getFontMetrics(this.displaySize);
+                    return Math.max(metrics.cellWidth, metrics.totalHeight, 1) * 0.04 * scale;
+                }
                 const { maxX, minX, maxY, minY } = shape.bbox;
                 return Math.max(maxX - minX, maxY - minY, 1) * 0.04 * scale;
             }
@@ -506,9 +602,7 @@
                 const cell = document.createElement('div');
                 cell.className = 'character-cell';
 
-                const svgString = shape.toSVG({
-                    isAutoFit: true
-                });
+                const svgString = shape.toSVG(this.getShapeSvgOptions());
                 
                 // Create a temporary div to parse the SVG string
                 const tempDiv = document.createElement('div');
@@ -563,15 +657,27 @@
                 this.grid.innerHTML = '';
                 this.allCharacterCells.clear();
                 const fontData = this.font.fontData;
+                const entries = Object.entries(fontData.content.data);
+                const batchSize = 80;
+                let index = 0;
 
-                Object.entries(fontData.content.data).forEach(([code, data]) => {
-                    const shape = this.font.getCharShape(parseInt(code), 12);
-                    if (shape) {
-                        const cell = this.createCharacterCell(code, shape);
-                        this.allCharacterCells.set(code, cell);
-                        this.grid.appendChild(cell);
+                const appendBatch = () => {
+                    const end = Math.min(index + batchSize, entries.length);
+                    for (; index < end; index++) {
+                        const [code] = entries[index];
+                        const shape = this.getPreviewCharShape(parseInt(code, 10));
+                        if (shape) {
+                            const cell = this.createCharacterCell(code, shape);
+                            this.allCharacterCells.set(code, cell);
+                            this.grid.appendChild(cell);
+                        }
                     }
-                });
+                    if (index < entries.length) {
+                        requestAnimationFrame(appendBatch);
+                    }
+                };
+
+                requestAnimationFrame(appendBatch);
             }
 
             handleSearch(event) {
@@ -645,12 +751,8 @@
             showModal(code, shape, shapeName) {
                 this.modalShape.innerHTML = '';
 
-                // Get SVG string with auto-fit enabled
-                const svgString = shape.toSVG({
-                    isAutoFit: true
-                });
-                
-                // Create a temporary div to parse the SVG string
+                const svgString = shape.toSVG(this.getModalShapeSvgOptions());
+
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = svgString;
                 const svg = tempDiv.querySelector('svg');

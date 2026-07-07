@@ -51,6 +51,11 @@ export interface ShxFontContentData {
    * characters, you can define an extended Big Font file.
    */
   isExtended: boolean;
+  /**
+   * Dual-orientation vertical bigfont (shape #0 modes = 2). Parent glyphs use a single
+   * parameter byte after code 14 instead of skipping a full nested command.
+   */
+  verticalDualMode?: boolean;
 }
 
 /**
