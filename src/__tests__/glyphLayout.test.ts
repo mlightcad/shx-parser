@@ -226,6 +226,35 @@ describe('glyph layout alignment', () => {
     }
   }, 60_000);
 
+  it('keeps trailing padding for aehalf semicolon, colon, and digit one', async () => {
+    const aehalf = await loadFont('aehalf.shx');
+    if (!aehalf) return;
+
+    try {
+      const size = 30;
+      const cellWidth = aehalf.getFontMetrics(size).cellWidth;
+      const expectedGap = cellWidth * 0.2;
+
+      for (const [left, right] of [
+        [';', 'E'],
+        [':', 'D'],
+        ['1', '0'],
+      ] as const) {
+        const leftShape = aehalf.getLayoutCharShape(left.charCodeAt(0), size)!;
+        const rightShape = aehalf.getLayoutCharShape(right.charCodeAt(0), size)!;
+        const advance = resolveAdvanceWidth(leftShape, aehalf.fontData, size);
+        const gap = advance + rightShape.bbox.minX - leftShape.bbox.maxX;
+
+        expect(advance).toBeCloseTo(
+          InkWidthAdvanceStrategy.computeAdvance(leftShape, cellWidth)
+        );
+        expect(gap).toBeCloseTo(expectedGap, 0);
+      }
+    } finally {
+      aehalf.release();
+    }
+  }, 60_000);
+
   it('does not overlap aehalf comma and the following letter', async () => {
     const aehalf = await loadFont('aehalf.shx');
     if (!aehalf) return;
