@@ -344,7 +344,7 @@
     </div>
 
     <script type="module">
-        import { ShxFont, ShxFontType } from './dist/index.es.js';
+        import { ShxFont, ShxFontType, shapeEncodedWithTopOrigin } from './dist/index.es.js';
 
         class ShxFontViewer {
             constructor() {
@@ -529,9 +529,9 @@
                 const sample = this.font.getCharShape(sampleCode, this.displaySize);
                 const usesTopOrigin =
                     sample &&
-                    header.fontType === 'unifont' &&
-                    sample.bbox.maxY <= 1e-6 &&
-                    sample.bbox.minY < 0;
+                    !this.font.fontData.content.dualOrientation &&
+                    (this.font.fontData.header.fontType === ShxFontType.UNIFONT ||
+                        shapeEncodedWithTopOrigin(this.font.fontData, sample, metrics));
 
                 this.glyphPreviewSettings = {
                     usesTopOrigin,

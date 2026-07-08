@@ -1,4 +1,5 @@
 import { ShxFont } from '../font';
+import { ShxNativeAdvanceStrategy } from '../advanceWidthStrategy';
 import { alignShxGlyphForLayout, computeFontMetrics } from '../glyphLayout';
 import { ShxFontData, ShxFontType } from '../fontData';
 import { Point } from '../point';
@@ -169,7 +170,12 @@ describe('ShxFont', () => {
       const shape = new ShxShape(new Point(6, 0), [
         [new Point(0, -4), new Point(6, 0)],
       ]);
-      const aligned = alignShxGlyphForLayout(shape, unifontData, size);
+      const aligned = alignShxGlyphForLayout(
+        shape,
+        unifontData,
+        size,
+        new ShxNativeAdvanceStrategy()
+      );
       expect(aligned.bbox.minY).toBeCloseTo(-4 + metrics.capHeight);
       expect(aligned.bbox.maxY).toBeCloseTo(metrics.capHeight);
       expect(aligned.lastPoint?.x).toBeCloseTo(metrics.cellWidth);
@@ -194,7 +200,12 @@ describe('ShxFont', () => {
       const shape = new ShxShape(undefined, [
         [new Point(0, -4), new Point(6, 0)],
       ]);
-      const aligned = alignShxGlyphForLayout(shape, unifontData, size);
+      const aligned = alignShxGlyphForLayout(
+        shape,
+        unifontData,
+        size,
+        new ShxNativeAdvanceStrategy()
+      );
       expect(aligned.lastPoint?.x).toBeCloseTo(metrics.cellWidth);
     });
 

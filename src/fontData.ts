@@ -52,6 +52,11 @@ export interface ShxFontContentData {
    */
   isExtended: boolean;
   /**
+   * Dual-orientation text font (shape #0 modes = 2). Code 14 (0x0E) skips the next
+   * command in horizontal layout and executes it in vertical layout.
+   */
+  dualOrientation?: boolean;
+  /**
    * Dual-orientation vertical bigfont (shape #0 modes = 2). Parent glyphs use a single
    * parameter byte after code 14 instead of skipping a full nested command.
    */

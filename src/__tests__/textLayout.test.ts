@@ -1,4 +1,9 @@
 import { ShxFont } from '../font';
+import {
+  DEFAULT_INK_WIDTH_CELL_FACTOR,
+  InkWidthAdvanceStrategy,
+  ShxNativeAdvanceStrategy,
+} from '../advanceWidthStrategy';
 import { computeFontMetrics } from '../glyphLayout';
 import { ShxFontData, ShxFontType } from '../fontData';
 import { Point } from '../point';
@@ -56,6 +61,8 @@ function makeMockFont(getShape: () => ShxShape | undefined): ShxFont {
 
 describe('textLayout', () => {
   describe('resolveAdvanceWidth', () => {
+    const native = new ShxNativeAdvanceStrategy();
+
     it('returns explicit advance for layout-ready unifont glyphs', () => {
       const fontData = makeFontData(ShxFontType.UNIFONT);
       const size = 16;
@@ -70,7 +77,7 @@ describe('textLayout', () => {
       const size = 16;
       const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
       const shape = new ShxShape(undefined, [[new Point(0, 0), new Point(2, 0)]]);
-      expect(resolveAdvanceWidth(shape, fontData, size)).toBe(cellWidth);
+      expect(resolveAdvanceWidth(shape, fontData, size, native)).toBe(cellWidth);
     });
 
     it('falls back to full cell for compact unifonts with zero ink', () => {
@@ -80,7 +87,7 @@ describe('textLayout', () => {
       const size = 16;
       const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
       const shape = new ShxShape(undefined, []);
-      expect(resolveAdvanceWidth(shape, fontData, size)).toBeCloseTo(cellWidth);
+      expect(resolveAdvanceWidth(shape, fontData, size, native)).toBeCloseTo(cellWidth);
     });
 
     it('falls back to full cell for aehalf without defined advance', () => {
@@ -91,7 +98,7 @@ describe('textLayout', () => {
       const size = 16;
       const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
       const shape = new ShxShape(undefined, []);
-      expect(resolveAdvanceWidth(shape, fontData, size)).toBeCloseTo(cellWidth);
+      expect(resolveAdvanceWidth(shape, fontData, size, native)).toBeCloseTo(cellWidth);
     });
 
     it('falls back to cell width for proportional unifonts without defined advance', () => {
@@ -101,7 +108,7 @@ describe('textLayout', () => {
       const size = 16;
       const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
       const shape = new ShxShape(undefined, [[new Point(0, 0), new Point(2, 0)]]);
-      expect(resolveAdvanceWidth(shape, fontData, size)).toBe(cellWidth);
+      expect(resolveAdvanceWidth(shape, fontData, size, native)).toBe(cellWidth);
     });
 
     it('uses full cell width for bigfont glyphs', () => {
@@ -109,7 +116,7 @@ describe('textLayout', () => {
       const size = 16;
       const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
       const shape = makeShape(cellWidth, 0, cellWidth * 0.8);
-      expect(resolveAdvanceWidth(shape, fontData, size)).toBeCloseTo(cellWidth);
+      expect(resolveAdvanceWidth(shape, fontData, size, native)).toBeCloseTo(cellWidth);
     });
 
     it('preserves explicit advance for proportional unifonts', () => {
@@ -132,7 +139,7 @@ describe('textLayout', () => {
       const size = 16;
       const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
       const shape = new ShxShape(new Point(2, 0), [[new Point(-1, -4), new Point(1, 0)]]);
-      expect(resolveAdvanceWidth(shape, fontData, size)).toBeCloseTo(cellWidth);
+      expect(resolveAdvanceWidth(shape, fontData, size, native)).toBeCloseTo(cellWidth);
     });
 
     it('uses explicit zero advance for advance-only glyphs', () => {
@@ -142,6 +149,73 @@ describe('textLayout', () => {
       const size = 16;
       const shape = new ShxShape(new Point(0, 0), [], true);
       expect(resolveAdvanceWidth(shape, fontData, size)).toBe(0);
+    });
+
+    it('uses ink width plus cell fraction for InkWidth strategy', () => {
+      const fontData = makeFontData(ShxFontType.SHAPES);
+      fontData.content.width = 10;
+      fontData.content.height = 10;
+      const size = 16;
+      const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
+      const factor = 0.15;
+      const shape = new ShxShape(undefined, [[new Point(0, 0), new Point(cellWidth * 0.6, 0)]]);
+      const inkWidth = InkWidthAdvanceStrategy.getInkWidth(shape);
+      const strategy = new InkWidthAdvanceStrategy(factor);
+
+      expect(resolveAdvanceWidth(shape, fontData, size, strategy)).toBeCloseTo(
+        inkWidth + cellWidth * factor
+      );
+    });
+
+    it('preserves explicit zero advance under InkWidth strategy', () => {
+      const fontData = makeFontData(ShxFontType.UNIFONT);
+      const size = 16;
+      const shape = new ShxShape(new Point(0, 0), [[new Point(0, 0), new Point(5, 0)]], true);
+
+      expect(resolveAdvanceWidth(shape, fontData, size, new InkWidthAdvanceStrategy())).toBe(0);
+    });
+
+    it('defaults InkWidth cell factor to DEFAULT_INK_WIDTH_CELL_FACTOR', () => {
+      const fontData = makeFontData(ShxFontType.SHAPES);
+      const size = 16;
+      const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
+      const shape = new ShxShape(undefined, [[new Point(0, 0), new Point(4, 0)]]);
+
+      expect(resolveAdvanceWidth(shape, fontData, size, new InkWidthAdvanceStrategy())).toBeCloseTo(
+        InkWidthAdvanceStrategy.computeAdvance(shape, cellWidth)
+      );
+    });
+
+    it('advances center-origin glyphs to the right cell edge plus padding', () => {
+      const fontData = makeFontData(ShxFontType.UNIFONT);
+      const size = 16;
+      const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
+      const comma = new ShxShape(undefined, [
+        [new Point(-1, 0), new Point(1, 0)],
+      ]);
+
+      expect(resolveAdvanceWidth(comma, fontData, size)).toBeCloseTo(
+        cellWidth / 2 + cellWidth * DEFAULT_INK_WIDTH_CELL_FACTOR
+      );
+    });
+
+    it('does not let center-origin punctuation overlap a following letter', () => {
+      const fontData = makeFontData(ShxFontType.UNIFONT);
+      const size = 16;
+      const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
+      const comma = new ShxShape(undefined, [
+        [new Point(-1.1, 0), new Point(1.1, 0)],
+      ]);
+      const letterB = new ShxShape(undefined, [
+        [new Point(-5.96, 0), new Point(6.62, 0)],
+      ]);
+
+      const commaAdvance = resolveAdvanceWidth(comma, fontData, size);
+      const gap = commaAdvance + letterB.bbox.minX - comma.bbox.maxX;
+      expect(gap).toBeGreaterThan(0);
+      expect(commaAdvance).toBeCloseTo(
+        InkWidthAdvanceStrategy.computeAdvance(comma, cellWidth)
+      );
     });
   });
 

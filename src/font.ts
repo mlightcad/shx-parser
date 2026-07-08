@@ -3,13 +3,20 @@ import { ShxFontData } from './fontData';
 import { ShxHeaderParser } from './headerParser';
 import { ShxContentParserFactory } from './contentParser';
 import { alignShxGlyphForLayout, computeFontMetrics, ShxFontMetrics } from './glyphLayout';
+import { defaultAdvanceWidthStrategy, ShxAdvanceWidthStrategy } from './advanceWidthStrategy';
 import { ShxShapeParser } from './shapeParser';
 import { ShxShape } from './shape';
 
 export {
+  DEFAULT_INK_WIDTH_CELL_FACTOR,
+  defaultAdvanceWidthStrategy,
+  InkWidthAdvanceStrategy,
+  ShxNativeAdvanceStrategy,
+  ShxAdvanceWidthStrategy,
+} from './advanceWidthStrategy';
+export {
   alignShxGlyphForLayout,
   computeFontMetrics,
-  resolveShapeAdvance,
   shapeEncodedWithTopOrigin,
   type ShxFontMetrics,
 } from './glyphLayout';
@@ -120,12 +127,16 @@ export class ShxFont {
    * @param code - The character code to get the shape for
    * @param size - The desired font size
    */
-  getLayoutCharShape(code: number, size: number): ShxShape | undefined {
+  getLayoutCharShape(
+    code: number,
+    size: number,
+    advanceStrategy: ShxAdvanceWidthStrategy = defaultAdvanceWidthStrategy
+  ): ShxShape | undefined {
     const raw = this.getCharShape(code, size);
     if (!raw) {
       return undefined;
     }
-    return alignShxGlyphForLayout(raw, this.fontData, size);
+    return alignShxGlyphForLayout(raw, this.fontData, size, advanceStrategy);
   }
 
   /**
