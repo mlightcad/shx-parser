@@ -50,12 +50,6 @@ export class InkWidthAdvanceStrategy extends ShxAdvanceWidthStrategy {
     this.cellWidthFactor = cellWidthFactor;
   }
 
-  /** Horizontal ink extent of a glyph (`bbox.maxX - bbox.minX`). */
-  static getInkWidth(shape: ShxShape): number {
-    const { minX, maxX } = shape.bbox;
-    return Math.max(0, maxX - minX);
-  }
-
   /**
    * True when ink extends left of the glyph origin (UNIFONT center-cell encoding).
    */
