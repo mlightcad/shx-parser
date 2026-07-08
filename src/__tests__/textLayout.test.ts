@@ -151,7 +151,7 @@ describe('textLayout', () => {
       expect(resolveAdvanceWidth(shape, fontData, size)).toBe(0);
     });
 
-    it('uses ink width plus cell fraction for InkWidth strategy', () => {
+    it('uses right ink edge plus cell fraction for InkWidth strategy', () => {
       const fontData = makeFontData(ShxFontType.SHAPES);
       fontData.content.width = 10;
       fontData.content.height = 10;
@@ -159,12 +159,32 @@ describe('textLayout', () => {
       const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
       const factor = 0.15;
       const shape = new ShxShape(undefined, [[new Point(0, 0), new Point(cellWidth * 0.6, 0)]]);
-      const inkWidth = InkWidthAdvanceStrategy.getInkWidth(shape);
       const strategy = new InkWidthAdvanceStrategy(factor);
 
       expect(resolveAdvanceWidth(shape, fontData, size, strategy)).toBeCloseTo(
-        inkWidth + cellWidth * factor
+        shape.bbox.maxX + cellWidth * factor
       );
+    });
+
+    it('includes left offset when advancing left-origin punctuation', () => {
+      const fontData = makeFontData(ShxFontType.SHAPES);
+      const size = 16;
+      const cellWidth = computeFontMetrics(fontData.content, size).cellWidth;
+      const shape = new ShxShape(undefined, [
+        [new Point(4, 0), new Point(6, 0)],
+      ]);
+      const letter = new ShxShape(undefined, [
+        [new Point(0, 0), new Point(8, 0)],
+      ]);
+
+      const advance = resolveAdvanceWidth(shape, fontData, size);
+      const gap = advance + letter.bbox.minX - shape.bbox.maxX;
+
+      expect(advance).toBeCloseTo(
+        InkWidthAdvanceStrategy.computeAdvance(shape, cellWidth)
+      );
+      expect(advance).toBeCloseTo(shape.bbox.maxX + cellWidth * DEFAULT_INK_WIDTH_CELL_FACTOR);
+      expect(gap).toBeCloseTo(cellWidth * DEFAULT_INK_WIDTH_CELL_FACTOR);
     });
 
     it('preserves explicit zero advance under InkWidth strategy', () => {

@@ -66,7 +66,7 @@ export class InkWidthAdvanceStrategy extends ShxAdvanceWidthStrategy {
   /**
    * Resolves ink-based advance for a glyph at a scaled cell width.
    *
-   * Left-origin glyphs (`minX >= 0`): `inkWidth + cellWidth * factor`.
+   * Left-origin glyphs (`minX >= 0`): `maxX + cellWidth * factor`.
    * Center-origin glyphs (`minX < 0`): advance to the right cell edge
    * (`max(maxX, cellWidth / 2)`) plus padding, so narrow centered punctuation
    * keeps trailing whitespace instead of colliding with the next glyph.
@@ -88,7 +88,7 @@ export class InkWidthAdvanceStrategy extends ShxAdvanceWidthStrategy {
       return Math.max(maxX, cellWidth / 2) + cellPadding;
     }
 
-    return InkWidthAdvanceStrategy.getInkWidth(shape) + cellPadding;
+    return maxX + cellPadding;
   }
 
   resolve(shape: ShxShape, cellWidth: number): number {
