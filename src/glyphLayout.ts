@@ -60,11 +60,67 @@ export function shapeEncodedWithTopOrigin(
 }
 
 /**
+ * True when a UNIFONT glyph already encodes with the baseline at y = 0 and ink
+ * above it (for example isocp.shx, tssdeng.shx with dualOrientation).
+ *
+ * These fonts must not receive the capHeight shift applied to top-origin UNIFONTs.
+ */
+export function unifontUsesBaselineOrigin(
+  shape: ShxShape,
+  metrics: ShxFontMetrics
+): boolean {
+  const threshold = -(metrics.descenderHeight + metrics.capHeight * 0.05);
+  if (shape.bbox.minY < threshold) {
+    return false;
+  }
+  const inkHeight = shape.bbox.maxY - shape.bbox.minY;
+  if (inkHeight < metrics.capHeight * 0.05) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Detects whether a UNIFONT file encodes horizontal glyphs with baseline at y = 0.
+ *
+ * Samples common ASCII letter/digit codes from the font. When any sample matches
+ * {@link unifontUsesBaselineOrigin}, the whole font skips capHeight shifting so
+ * punctuation such as hyphen and tilde keep their in-cell vertical positions.
+ */
+export function detectUnifontBaselineOriginFont(
+  fontData: ShxFontData,
+  getRawShape: (code: number) => ShxShape | undefined,
+  size: number
+): boolean {
+  if (fontData.header.fontType !== ShxFontType.UNIFONT) {
+    return false;
+  }
+  if (fontData.content.dualOrientation) {
+    return true;
+  }
+  const metrics = computeFontMetrics(fontData.content, size);
+  for (const code of [48, 65, 78, 49]) {
+    if (!(code in fontData.content.data)) {
+      continue;
+    }
+    const raw = getRawShape(code);
+    if (raw && unifontUsesBaselineOrigin(raw, metrics)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Maps a glyph from font coordinates to layout coordinates using shape #0 metrics.
  *
  * UNIFONT encodes y = 0 at the cell top with negative y toward the baseline at
  * y = -baseUp. Layout uses y = 0 at the baseline with positive y upward, so glyphs
  * are shifted by {@link ShxFontMetrics.capHeight}.
+ *
+ * ISO-style UNIFONT files (isocp.shx) and dual-orientation fonts (txt.shx) already
+ * encode horizontal glyphs with baseline at y = 0; they are detected via
+ * {@link unifontUsesBaselineOrigin} and {@link ShxFontContentData.dualOrientation}.
  *
  * Some SHAPES text fonts (e.g. gdt.shx) reuse the same top-origin encoding; they are
  * detected via {@link shapeEncodedWithTopOrigin}.
@@ -75,7 +131,8 @@ function alignGlyphWithMetrics(
   shape: ShxShape,
   fontData: ShxFontData,
   metrics: ShxFontMetrics,
-  advanceStrategy: ShxAdvanceWidthStrategy = defaultAdvanceWidthStrategy
+  advanceStrategy: ShxAdvanceWidthStrategy = defaultAdvanceWidthStrategy,
+  unifontBaselineOriginFont = false
 ): ShxShape {
   let aligned = shape;
 
@@ -83,8 +140,14 @@ function alignGlyphWithMetrics(
     fontData.header.fontType === ShxFontType.UNIFONT ||
     shapeEncodedWithTopOrigin(fontData, shape, metrics)
   ) {
-    // Dual-orientation unifont horizontal glyphs (txt.shx) already use baseline at y = 0.
-    if (!(fontData.header.fontType === ShxFontType.UNIFONT && fontData.content.dualOrientation)) {
+    const skipUnifontCapShift =
+      fontData.header.fontType === ShxFontType.UNIFONT &&
+      (unifontBaselineOriginFont ||
+        fontData.content.dualOrientation ||
+        unifontUsesBaselineOrigin(shape, metrics));
+    const needsCapHeightShift =
+      fontData.header.fontType === ShxFontType.UNIFONT ? !skipUnifontCapShift : true;
+    if (needsCapHeightShift) {
       aligned = aligned.offset(new Point(0, metrics.capHeight), true);
     }
   }
@@ -104,14 +167,21 @@ function alignGlyphWithMetrics(
  * Applies font metrics to scaled SHX geometry for text layout.
  *
  * Raw {@link ShxFont.getCharShape} output keeps encoded coordinates from the SHX file;
- * this function repositions glyphs so mixed-font lines share a common baseline.
+ * this function repositions glyphs so mixed-font lines share a common baseline at y = 0.
  */
 export function alignShxGlyphForLayout(
   shape: ShxShape,
   fontData: ShxFontData,
   size: number,
-  advanceStrategy: ShxAdvanceWidthStrategy = defaultAdvanceWidthStrategy
+  advanceStrategy: ShxAdvanceWidthStrategy = defaultAdvanceWidthStrategy,
+  unifontBaselineOriginFont = false
 ): ShxShape {
   const metrics = computeFontMetrics(fontData.content, size);
-  return alignGlyphWithMetrics(shape, fontData, metrics, advanceStrategy);
+  return alignGlyphWithMetrics(
+    shape,
+    fontData,
+    metrics,
+    advanceStrategy,
+    unifontBaselineOriginFont
+  );
 }

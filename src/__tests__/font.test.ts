@@ -1,4 +1,8 @@
-import { ShxFont } from '../font';
+import {
+  ShxFont,
+  detectUnifontBaselineOriginFont,
+  unifontUsesBaselineOrigin,
+} from '../font';
 import { ShxNativeAdvanceStrategy } from '../advanceWidthStrategy';
 import { alignShxGlyphForLayout, computeFontMetrics } from '../glyphLayout';
 import { ShxFontData, ShxFontType } from '../fontData';
@@ -266,6 +270,121 @@ describe('ShxFont', () => {
       } finally {
         font.release();
       }
+    });
+
+    it('skips capHeight shift for dual-orientation unifont glyphs', () => {
+      const unifontData: ShxFontData = {
+        header: { fontType: ShxFontType.UNIFONT, fileHeader: 'test', fileVersion: '1.0' },
+        content: {
+          data: { 97: new Uint8Array([0x02, 0x08, 0x00, 0x04, 0x01, 0x80, 0x02, 0x00]) },
+          info: '',
+          orientation: 'horizontal',
+          baseUp: 8,
+          baseDown: 2,
+          height: 10,
+          width: 10,
+          isExtended: false,
+          dualOrientation: true,
+        },
+      };
+      const font = new ShxFont(unifontData);
+      try {
+        const raw = font.getCharShape(97, 16)!;
+        const layout = font.getLayoutCharShape(97, 16)!;
+        expect(layout.bbox.minY).toBeCloseTo(raw.bbox.minY, 0);
+        expect(layout.bbox.maxY).toBeCloseTo(raw.bbox.maxY, 0);
+      } finally {
+        font.release();
+      }
+    });
+  });
+
+  describe('unifont baseline-origin detection', () => {
+    const topOriginUnifont: ShxFontData = {
+      header: { fontType: ShxFontType.UNIFONT, fileHeader: 'test', fileVersion: '1.0' },
+      content: {
+        data: { 48: new Uint8Array([0x01, 0x80, 0x02, 0x00]) },
+        info: '',
+        orientation: 'horizontal',
+        baseUp: 8,
+        baseDown: 2,
+        height: 10,
+        width: 10,
+        isExtended: false,
+      },
+    };
+
+    it('detects baseline-origin glyphs from ink above y = 0', () => {
+      const size = 16;
+      const metrics = computeFontMetrics(topOriginUnifont.content, size);
+      const baselineGlyph = new ShxShape(new Point(8, 0), [
+        [new Point(1, 2), new Point(6, 12)],
+      ]);
+      const topOriginGlyph = new ShxShape(new Point(8, 0), [
+        [new Point(1, -10), new Point(6, -2)],
+      ]);
+
+      expect(unifontUsesBaselineOrigin(baselineGlyph, metrics)).toBe(true);
+      expect(unifontUsesBaselineOrigin(topOriginGlyph, metrics)).toBe(false);
+    });
+
+    it('rejects baseline-origin detection for tiny ink marks', () => {
+      const size = 16;
+      const metrics = computeFontMetrics(topOriginUnifont.content, size);
+      const tinyMark = new ShxShape(new Point(8, 0), [
+        [new Point(2, 0), new Point(2, 0)],
+      ]);
+      expect(unifontUsesBaselineOrigin(tinyMark, metrics)).toBe(false);
+    });
+
+    it('returns false for non-unifont fonts', () => {
+      const fontData = createBigFontData({ 1: new Uint8Array([0x01, 0x80, 0x02, 0x00]) });
+      const size = 16;
+      const metrics = computeFontMetrics(fontData.content, size);
+      const glyph = new ShxShape(new Point(8, 0), [[new Point(1, 2), new Point(6, 12)]]);
+
+      expect(
+        detectUnifontBaselineOriginFont(fontData, () => glyph, size)
+      ).toBe(false);
+    });
+
+    it('returns true for dual-orientation unifont files', () => {
+      const fontData: ShxFontData = {
+        ...topOriginUnifont,
+        content: { ...topOriginUnifont.content, dualOrientation: true },
+      };
+      expect(
+        detectUnifontBaselineOriginFont(fontData, () => undefined, 16)
+      ).toBe(true);
+    });
+
+    it('samples available glyphs and skips missing codes', () => {
+      const size = 16;
+      const metrics = computeFontMetrics(topOriginUnifont.content, size);
+      const baselineGlyph = new ShxShape(new Point(8, 0), [
+        [new Point(1, 2), new Point(6, 12)],
+      ]);
+
+      expect(
+        detectUnifontBaselineOriginFont(
+          topOriginUnifont,
+          (code) => (code === 48 ? baselineGlyph : undefined),
+          size
+        )
+      ).toBe(true);
+
+      expect(
+        detectUnifontBaselineOriginFont(
+          {
+            ...topOriginUnifont,
+            content: { ...topOriginUnifont.content, data: {} },
+          },
+          () => baselineGlyph,
+          size
+        )
+      ).toBe(false);
+
+      expect(unifontUsesBaselineOrigin(baselineGlyph, metrics)).toBe(true);
     });
   });
 });
