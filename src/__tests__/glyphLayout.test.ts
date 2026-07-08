@@ -328,12 +328,11 @@ describe('glyph layout alignment', () => {
 
     try {
       const size = 7.5;
-      const isocpMetrics = isocp.getFontMetrics(size);
       const digitLayout = isocp.getLayoutCharShape('1'.charCodeAt(0), size)!;
       const rawDigit = isocp.getCharShape('1'.charCodeAt(0), size)!;
       const hanLayout = hztxt.getLayoutCharShape(0xb5f7, size)!;
 
-      expect(digitLayout.bbox.minY).toBeCloseTo(rawDigit.bbox.minY + isocpMetrics.capHeight, 0);
+      expect(digitLayout.bbox.minY).toBeCloseTo(rawDigit.bbox.minY, 0);
       expect(hanLayout.bbox.minY).toBeCloseTo(hztxt.getCharShape(0xb5f7, size)!.bbox.minY, 0);
 
       const placed = layoutTextRun([
@@ -342,6 +341,8 @@ describe('glyph layout alignment', () => {
         { font: isocp, code: 'H'.charCodeAt(0), size },
       ]);
       expect(placed).toHaveLength(3);
+      expect(placed[0].shape.bbox.minY).toBeCloseTo(placed[1].shape.bbox.minY, 0);
+      expect(placed[2].shape.bbox.minY).toBeCloseTo(placed[1].shape.bbox.minY, 0);
       expect(placed[1].x).toBeCloseTo(
         resolveAdvanceWidth(digitLayout, isocp.fontData, size),
         0
@@ -349,6 +350,22 @@ describe('glyph layout alignment', () => {
     } finally {
       isocp.release();
       hztxt.release();
+    }
+  }, 60_000);
+
+  it('keeps isocp hyphen at mid-cell height in baseline-origin fonts', async () => {
+    const isocp = await loadFont('isocp.shx');
+    if (!isocp) return;
+
+    try {
+      const size = 7.5;
+      const digit = isocp.getLayoutCharShape('0'.charCodeAt(0), size)!;
+      const hyphen = isocp.getLayoutCharShape('-'.charCodeAt(0), size)!;
+      expect(hyphen.bbox.minY).toBeGreaterThan(digit.bbox.minY);
+      expect(hyphen.bbox.maxY).toBeLessThan(digit.bbox.maxY);
+      expect(hyphen.bbox.minY).toBeCloseTo(2.02, 0);
+    } finally {
+      isocp.release();
     }
   }, 60_000);
 });

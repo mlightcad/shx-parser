@@ -2,8 +2,13 @@ import { ShxFileReader } from './fileReader';
 import { ShxFontData } from './fontData';
 import { ShxHeaderParser } from './headerParser';
 import { ShxContentParserFactory } from './contentParser';
-import { alignShxGlyphForLayout, computeFontMetrics, ShxFontMetrics } from './glyphLayout';
 import { defaultAdvanceWidthStrategy, ShxAdvanceWidthStrategy } from './advanceWidthStrategy';
+import {
+  alignShxGlyphForLayout,
+  computeFontMetrics,
+  detectUnifontBaselineOriginFont,
+  ShxFontMetrics,
+} from './glyphLayout';
 import { ShxShapeParser } from './shapeParser';
 import { ShxShape } from './shape';
 
@@ -17,7 +22,9 @@ export {
 export {
   alignShxGlyphForLayout,
   computeFontMetrics,
+  detectUnifontBaselineOriginFont,
   shapeEncodedWithTopOrigin,
+  unifontUsesBaselineOrigin,
   type ShxFontMetrics,
 } from './glyphLayout';
 
@@ -31,6 +38,8 @@ export class ShxFont {
   public readonly fontData: ShxFontData;
   /** Parser for converting character codes to shapes */
   private readonly shapeParser: ShxShapeParser;
+  /** Cached UNIFONT baseline-origin detection (size-independent). */
+  private unifontBaselineOriginFont?: boolean;
 
   /**
    * Creates a new ShxFont instance.
@@ -136,7 +145,33 @@ export class ShxFont {
     if (!raw) {
       return undefined;
     }
-    return alignShxGlyphForLayout(raw, this.fontData, size, advanceStrategy);
+    return alignShxGlyphForLayout(
+      raw,
+      this.fontData,
+      size,
+      advanceStrategy,
+      this.usesUnifontBaselineOriginFont(size)
+    );
+  }
+
+  /**
+   * Returns whether this UNIFONT encodes horizontal glyphs with baseline at y = 0.
+   *
+   * The result is computed once via {@link detectUnifontBaselineOriginFont} and cached,
+   * because baseline-origin detection is independent of render size.
+   *
+   * @param size - Font size used when sampling glyph geometry for detection
+   * @returns True when baseline-origin UNIFONT shifting should be skipped during layout
+   */
+  private usesUnifontBaselineOriginFont(size: number): boolean {
+    if (this.unifontBaselineOriginFont === undefined) {
+      this.unifontBaselineOriginFont = detectUnifontBaselineOriginFont(
+        this.fontData,
+        (code) => this.getCharShape(code, size),
+        size
+      );
+    }
+    return this.unifontBaselineOriginFont;
   }
 
   /**
