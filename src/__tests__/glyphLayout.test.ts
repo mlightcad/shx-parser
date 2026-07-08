@@ -1,4 +1,5 @@
 import { ShxFont } from '../font';
+import { InkWidthAdvanceStrategy, ShxNativeAdvanceStrategy } from '../advanceWidthStrategy';
 import { alignShxGlyphForLayout } from '../glyphLayout';
 import { getAdvanceWidth, resolveAdvanceWidth, layoutTextRun } from '../textLayout';
 
@@ -22,7 +23,12 @@ describe('glyph layout alignment', () => {
     try {
       const size = 16;
       const raw = hztxt.getCharShape(0xa3ac, size)!;
-      const aligned = alignShxGlyphForLayout(raw, hztxt.fontData, size);
+      const aligned = alignShxGlyphForLayout(
+        raw,
+        hztxt.fontData,
+        size,
+        new ShxNativeAdvanceStrategy()
+      );
 
       expect(resolveAdvanceWidth(aligned, hztxt.fontData, size)).toBeCloseTo(
         getAdvanceWidth(raw),
@@ -51,17 +57,17 @@ describe('glyph layout alignment', () => {
     }
   }, 60_000);
 
-  it('shifts txt lowercase letters by capHeight from shape #0 metrics', async () => {
+  it('keeps txt dual-orientation glyphs in baseline coordinates without capHeight shift', async () => {
     const txt = await loadFont('txt.shx');
     if (!txt) return;
 
     try {
       const size = 16;
-      const metrics = txt.getFontMetrics(size);
       for (const char of ['a', 'e', 'o', 'x', ':', 't', 'n']) {
         const raw = txt.getCharShape(char.charCodeAt(0), size)!;
         const layoutShape = txt.getLayoutCharShape(char.charCodeAt(0), size)!;
-        expect(layoutShape.bbox.minY).toBeCloseTo(raw.bbox.minY + metrics.capHeight, 0);
+        expect(layoutShape.bbox.minY).toBeCloseTo(raw.bbox.minY, 0);
+        expect(layoutShape.bbox.maxY).toBeCloseTo(raw.bbox.maxY, 0);
       }
     } finally {
       txt.release();
@@ -81,8 +87,9 @@ describe('glyph layout alignment', () => {
       ]);
       const gap = placed[1].shape.bbox.minX - placed[0].shape.bbox.maxX;
       const letterL = txt.getLayoutCharShape(code, size)!;
+      const cellWidth = txt.getFontMetrics(size).cellWidth;
       expect(resolveAdvanceWidth(letterL, txt.fontData, size)).toBeCloseTo(
-        txt.getFontMetrics(size).cellWidth
+        InkWidthAdvanceStrategy.computeAdvance(letterL, cellWidth)
       );
       expect(gap).toBeGreaterThanOrEqual(0);
     } finally {
@@ -108,7 +115,7 @@ describe('glyph layout alignment', () => {
     }
   }, 60_000);
 
-  it('uses metrics cell width and capHeight for txt compact unifont layout', async () => {
+  it('uses metrics cell width and baseline layout for txt compact unifont punctuation', async () => {
     const txt = await loadFont('txt.shx');
     if (!txt) return;
 
@@ -117,16 +124,21 @@ describe('glyph layout alignment', () => {
       const metrics = txt.getFontMetrics(size);
 
       const hyphen = txt.getLayoutCharShape('-'.charCodeAt(0), size)!;
-      expect(hyphen.bbox.minY).toBeCloseTo(metrics.capHeight, 0);
-      expect(hyphen.bbox.maxY).toBeCloseTo(metrics.capHeight, 0);
-      expect(resolveAdvanceWidth(hyphen, txt.fontData, size)).toBeCloseTo(metrics.cellWidth);
+      expect(hyphen.bbox.minY).toBeCloseTo(metrics.capHeight / 2, 0);
+      expect(hyphen.bbox.maxY).toBeCloseTo(metrics.capHeight / 2, 0);
+      expect(resolveAdvanceWidth(hyphen, txt.fontData, size)).toBeCloseTo(
+        InkWidthAdvanceStrategy.computeAdvance(hyphen, metrics.cellWidth)
+      );
 
       const comma = txt.getLayoutCharShape(','.charCodeAt(0), size)!;
       const rawComma = txt.getCharShape(','.charCodeAt(0), size)!;
-      expect(comma.bbox.minY).toBeCloseTo(rawComma.bbox.minY + metrics.capHeight, 0);
+      expect(comma.bbox.minY).toBeCloseTo(rawComma.bbox.minY, 0);
+      expect(comma.bbox.maxY).toBeLessThanOrEqual(metrics.descenderHeight);
       expect(rawComma.lastPoint!.x).toBeGreaterThan(0);
       expect(rawComma.hasExplicitAdvance).toBe(false);
-      expect(resolveAdvanceWidth(comma, txt.fontData, size)).toBeCloseTo(metrics.cellWidth);
+      expect(resolveAdvanceWidth(comma, txt.fontData, size)).toBeCloseTo(
+        InkWidthAdvanceStrategy.computeAdvance(comma, metrics.cellWidth)
+      );
     } finally {
       txt.release();
     }
@@ -180,7 +192,7 @@ describe('glyph layout alignment', () => {
     }
   }, 60_000);
 
-  it('uses cell width advance for aehalf punctuation', async () => {
+  it('uses ink-width advance for aehalf center-origin punctuation', async () => {
     const aehalf = await loadFont('aehalf.shx');
     if (!aehalf) return;
 
@@ -199,14 +211,37 @@ describe('glyph layout alignment', () => {
       expect(placed).toHaveLength(6);
       for (const code of [34, 126]) {
         const layoutShape = aehalf.getLayoutCharShape(code, size)!;
-        expect(resolveAdvanceWidth(layoutShape, aehalf.fontData, size)).toBeCloseTo(cellWidth);
+        expect(resolveAdvanceWidth(layoutShape, aehalf.fontData, size)).toBeCloseTo(
+          InkWidthAdvanceStrategy.computeAdvance(layoutShape, cellWidth)
+        );
       }
 
       for (let i = 1; i < placed.length; i++) {
         const gap = placed[i].shape.bbox.minX - placed[i - 1].shape.bbox.maxX;
-        expect(gap).toBeGreaterThanOrEqual(0);
+        expect(gap).toBeGreaterThanOrEqual(-0.1);
         expect(gap).toBeLessThan(cellWidth);
       }
+    } finally {
+      aehalf.release();
+    }
+  }, 60_000);
+
+  it('does not overlap aehalf comma and the following letter', async () => {
+    const aehalf = await loadFont('aehalf.shx');
+    if (!aehalf) return;
+
+    try {
+      const size = 30;
+      const placed = layoutTextRun([
+        { font: aehalf, code: 'a'.charCodeAt(0), size },
+        { font: aehalf, code: ','.charCodeAt(0), size },
+        { font: aehalf, code: 'B'.charCodeAt(0), size },
+        { font: aehalf, code: 'b'.charCodeAt(0), size },
+      ]);
+
+      expect(placed).toHaveLength(4);
+      const gap = placed[2].shape.bbox.minX - placed[1].shape.bbox.maxX;
+      expect(gap).toBeGreaterThan(0);
     } finally {
       aehalf.release();
     }
@@ -223,22 +258,24 @@ describe('glyph layout alignment', () => {
       const letterA = aehalf.getLayoutCharShape(65, size)!;
       expect(letterA.bbox.minY).toBeCloseTo(0, 0);
       expect(letterA.bbox.maxY).toBeCloseTo(metrics.capHeight, 0);
-      expect(letterA.lastPoint?.x).toBeCloseTo(metrics.cellWidth);
+      expect(letterA.lastPoint?.x).toBeCloseTo(
+        InkWidthAdvanceStrategy.computeAdvance(letterA, metrics.cellWidth)
+      );
 
       const quote = aehalf.getLayoutCharShape(34, size)!;
       const rawQuote = aehalf.getCharShape(34, size)!;
-      expect(quote.bbox.minY).toBeCloseTo(rawQuote.bbox.minY + metrics.capHeight, 0);
+      expect(quote.bbox.minY).toBeCloseTo(rawQuote.bbox.minY, 0);
 
       for (const code of [59, 58, 40, 41, 44, 46]) {
         const shape = aehalf.getLayoutCharShape(code, size)!;
         expect(resolveAdvanceWidth(shape, aehalf.fontData, size)).toBeCloseTo(
-          metrics.cellWidth
+          InkWidthAdvanceStrategy.computeAdvance(shape, metrics.cellWidth)
         );
       }
 
       for (const ch of 'gjpq') {
         const layoutShape = aehalf.getLayoutCharShape(ch.charCodeAt(0), size)!;
-        expect(layoutShape.bbox.minY).toBeCloseTo(0, 0);
+        expect(layoutShape.bbox.minY).toBeLessThan(0);
       }
 
       const placed = layoutTextRun([

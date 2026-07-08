@@ -1,8 +1,7 @@
+import { defaultAdvanceWidthStrategy, ShxAdvanceWidthStrategy } from './advanceWidthStrategy';
 import { ShxFontContentData, ShxFontData, ShxFontType } from './fontData';
 import { Point } from './point';
 import { ShxShape } from './shape';
-
-const LAYOUT_EPSILON = 1e-6;
 
 /**
  * Scaled font metrics derived from shape #0 (`baseUp`, `baseDown`, `height`, `width`).
@@ -43,22 +42,6 @@ export function computeFontMetrics(content: ShxFontContentData, size: number): S
   };
 }
 
-/** Resolves horizontal advance from a parsed glyph, with cell-width fallback. */
-export function resolveShapeAdvance(shape: ShxShape, fallback: number): number {
-  const advanceX = shape.lastPoint?.x ?? 0;
-  const hasInk = shape.polylines.some(line => line.length >= 2);
-
-  // Only pen-up advance vectors (or BIGFONT cell #2) define horizontal spacing.
-  // A non-zero final pen-down position (e.g. txt.shx comma) is stroke geometry, not advance.
-  if (shape.hasExplicitAdvance) {
-    return advanceX;
-  }
-  if (!hasInk && Math.abs(advanceX) > LAYOUT_EPSILON) {
-    return advanceX;
-  }
-  return fallback;
-}
-
 /**
  * True when a SHAPES text font (shape #0 present) stores glyphs in UNIFONT-style
  * top-origin coordinates: ink extends well below the descender band unless shifted
@@ -91,7 +74,8 @@ export function shapeEncodedWithTopOrigin(
 function alignGlyphWithMetrics(
   shape: ShxShape,
   fontData: ShxFontData,
-  metrics: ShxFontMetrics
+  metrics: ShxFontMetrics,
+  advanceStrategy: ShxAdvanceWidthStrategy = defaultAdvanceWidthStrategy
 ): ShxShape {
   let aligned = shape;
 
@@ -99,14 +83,20 @@ function alignGlyphWithMetrics(
     fontData.header.fontType === ShxFontType.UNIFONT ||
     shapeEncodedWithTopOrigin(fontData, shape, metrics)
   ) {
-    aligned = aligned.offset(new Point(0, metrics.capHeight), true);
+    // Dual-orientation unifont horizontal glyphs (txt.shx) already use baseline at y = 0.
+    if (!(fontData.header.fontType === ShxFontType.UNIFONT && fontData.content.dualOrientation)) {
+      aligned = aligned.offset(new Point(0, metrics.capHeight), true);
+    }
   }
 
-  const advance = resolveShapeAdvance(aligned, metrics.cellWidth);
+  const advance = advanceStrategy.resolve(aligned, metrics.cellWidth);
+  const hasExplicitAdvance = advanceStrategy.markAlignedAdvanceExplicit(aligned)
+    ? true
+    : aligned.hasExplicitAdvance;
   return new ShxShape(
     new Point(advance, aligned.lastPoint?.y ?? 0),
     aligned.polylines,
-    aligned.hasExplicitAdvance
+    hasExplicitAdvance
   );
 }
 
@@ -119,8 +109,9 @@ function alignGlyphWithMetrics(
 export function alignShxGlyphForLayout(
   shape: ShxShape,
   fontData: ShxFontData,
-  size: number
+  size: number,
+  advanceStrategy: ShxAdvanceWidthStrategy = defaultAdvanceWidthStrategy
 ): ShxShape {
   const metrics = computeFontMetrics(fontData.content, size);
-  return alignGlyphWithMetrics(shape, fontData, metrics);
+  return alignGlyphWithMetrics(shape, fontData, metrics, advanceStrategy);
 }

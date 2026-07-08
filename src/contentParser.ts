@@ -10,6 +10,21 @@ const DEFAULT_FONT_SIZE = 10;
  */
 const TERMINATING_CHARS = [0x0d, 0x0a, 0x00];
 
+/** Applies shape #0 / unifont info-block mode-byte semantics to font metadata. */
+function applyFontModes(fontData: ShxFontContentData, modes: number): void {
+  if (modes === 0) {
+    fontData.orientation = 'horizontal';
+    return;
+  }
+  if (modes === 2) {
+    // Dual-orientation text fonts (txt.shx, simplex.shx, etc.) default to horizontal layout.
+    fontData.orientation = 'horizontal';
+    fontData.dualOrientation = true;
+    return;
+  }
+  fontData.orientation = 'vertical';
+}
+
 function buildCodeToName(names: Record<string, number>): Record<number, string> {
   const codeToName: Record<number, string> = {};
   for (const [name, code] of Object.entries(names)) {
@@ -126,7 +141,7 @@ class ShxShapeContentParser implements ShxContentParser {
               fontData.baseDown = infoData[index + 2];
               fontData.height = fontData.baseDown + fontData.baseUp;
               fontData.width = fontData.height;
-              fontData.orientation = infoData[index + 3] === 0 ? 'horizontal' : 'vertical';
+              applyFontModes(fontData, infoData[index + 3]);
             }
           }
         } catch {
@@ -390,7 +405,7 @@ class ShxUnifontContentParser implements ShxContentParser {
             fontData.baseDown = infoData[index + 2];
             fontData.height = fontData.baseUp + fontData.baseDown;
             fontData.width = fontData.height;
-            fontData.orientation = infoData[index + 3] === 0 ? 'horizontal' : 'vertical';
+            applyFontModes(fontData, infoData[index + 3]);
           }
         }
       } catch {

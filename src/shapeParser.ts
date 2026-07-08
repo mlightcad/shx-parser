@@ -210,6 +210,25 @@ export class ShxShapeParser {
     return new ShxShape(scaledLastPoint, scaledPolylines, shape.hasExplicitAdvance);
   }
 
+  /**
+   * Whether code 14 (0x0E) should skip the following command for the current layout.
+   * Defaults to horizontal text layout when no orientation is supplied.
+   */
+  private shouldSkipVerticalFlagCommand(layoutVertical = false): boolean {
+    const { content, header } = this.fontData;
+    if (header.fontType === ShxFontType.BIGFONT) {
+      if (content.verticalDualMode) {
+        return false;
+      }
+      // extfont2-style bigfonts always skip the code 14 payload.
+      return true;
+    }
+    if (content.dualOrientation) {
+      return !layoutVertical;
+    }
+    return content.orientation === 'horizontal';
+  }
+
   /** Marks that bytecode explicitly defines horizontal advance. */
   private markAdvanceDefined(state: ParseState): void {
     state.hasExplicitAdvance = true;
@@ -403,16 +422,11 @@ export class ShxShapeParser {
         this.clearPendingAdvance(state);
         i = this.handleMultipleBulgeArcs(data, i, state);
         break;
-      case 14: // Vertical-only command
+      case 14: // Dual-orientation flag (code 0x0E)
         this.clearPendingAdvance(state);
         // https://help.autodesk.com/view/OARX/2023/ENU/?guid=GUID-06832147-16BE-4A66-A6D0-3ADF98DC8228
-        // Dual-orientation bigfonts (modes = 2) execute the next command. Other bigfonts
-        // (extfont2-style) and horizontal fonts skip it.
-        if (
-          this.fontData.content.orientation === 'horizontal' ||
-          (this.fontData.header.fontType === ShxFontType.BIGFONT &&
-            !this.fontData.content.verticalDualMode)
-        ) {
+        // Horizontal layout skips the next command; vertical layout executes it.
+        if (this.shouldSkipVerticalFlagCommand()) {
           i = this.skipCode(data, ++i);
         }
         break;

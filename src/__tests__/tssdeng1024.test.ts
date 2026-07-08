@@ -1,6 +1,6 @@
 import { ShxFont } from '../font';
+import { InkWidthAdvanceStrategy } from '../advanceWidthStrategy';
 import { layoutTextRun, resolveAdvanceWidth } from '../textLayout';
-
 const FONT_BASE = 'https://cdn.jsdelivr.net/gh/mlightcad/cad-data/fonts/';
 
 async function loadFont(name: string): Promise<ShxFont | null> {
@@ -14,7 +14,7 @@ async function loadFont(name: string): Promise<ShxFont | null> {
 }
 
 describe('tssdeng digit spacing', () => {
-  it('uses cell width advance for proportional unifont digits (AutoCAD model)', async () => {
+  it('uses center-origin ink advance for proportional unifont digits', async () => {
     const tssdeng = await loadFont('tssdeng.shx');
     if (!tssdeng) return;
 
@@ -38,7 +38,9 @@ describe('tssdeng digit spacing', () => {
       for (const ch of '1024') {
         const layout = tssdeng.getLayoutCharShape(ch.charCodeAt(0), size)!;
         const advance = resolveAdvanceWidth(layout, tssdeng.fontData, size);
-        expect(advance).toBeCloseTo(cellWidth);
+        expect(advance).toBeCloseTo(
+          InkWidthAdvanceStrategy.computeAdvance(layout, cellWidth)
+        );
       }
     } finally {
       tssdeng.release();

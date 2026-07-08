@@ -43,7 +43,7 @@ describe('punctuation spacing (raw geometry + layout)', () => {
 
       expect(comma.lastPoint).toBeDefined();
       expect(getAdvanceWidth(comma)).toBe(comma.lastPoint!.x);
-      expect(comma.bbox.maxX).toBeGreaterThan(comma.lastPoint!.x);
+      expect(comma.lastPoint!.x).toBeGreaterThan(comma.bbox.maxX);
     } finally {
       tssdeng.release();
     }

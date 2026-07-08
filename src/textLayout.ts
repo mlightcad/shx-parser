@@ -1,5 +1,6 @@
+import { defaultAdvanceWidthStrategy, ShxAdvanceWidthStrategy } from './advanceWidthStrategy';
 import { ShxFont } from './font';
-import { computeFontMetrics, resolveShapeAdvance } from './glyphLayout';
+import { computeFontMetrics } from './glyphLayout';
 import { ShxFontData } from './fontData';
 import { Point } from './point';
 import { ShxShape } from './shape';
@@ -33,20 +34,28 @@ export function getAdvanceWidth(shape: ShxShape): number {
   return maxX - minX;
 }
 
+/** Options for {@link layoutTextRun}. */
+export interface TextLayoutOptions {
+  /** Horizontal advance strategy applied to each glyph in the run. */
+  advance?: ShxAdvanceWidthStrategy;
+}
+
 /**
  * Resolves the horizontal advance for a layout-ready glyph.
- *
- * When the SHX bytecode defines advance ({@link ShxShape.hasExplicitAdvance}) or the
- * final pen X is non-zero, uses {@link ShxShape.lastPoint}.x; otherwise falls back to
- * the font cell width from shape #0.
  *
  * @param shape - Scaled glyph geometry, typically from {@link ShxFont.getLayoutCharShape}
  * @param fontData - Parsed font header and content
  * @param size - Target font size in drawing units
+ * @param advanceStrategy - Advance strategy; defaults to {@link defaultAdvanceWidthStrategy}
  */
-export function resolveAdvanceWidth(shape: ShxShape, fontData: ShxFontData, size: number): number {
+export function resolveAdvanceWidth(
+  shape: ShxShape,
+  fontData: ShxFontData,
+  size: number,
+  advanceStrategy: ShxAdvanceWidthStrategy = defaultAdvanceWidthStrategy
+): number {
   const metrics = computeFontMetrics(fontData.content, size);
-  return resolveShapeAdvance(shape, metrics.cellWidth);
+  return advanceStrategy.resolve(shape, metrics.cellWidth);
 }
 
 /**
@@ -65,12 +74,17 @@ export function placeGlyphOnBaseline(shape: ShxShape, x: number, baselineY = 0):
  * @param glyphs - Characters to place left-to-right
  * @param baselineY - Shared baseline y coordinate in drawing units
  */
-export function layoutTextRun(glyphs: TextRunGlyph[], baselineY = 0): PlacedGlyph[] {
+export function layoutTextRun(
+  glyphs: TextRunGlyph[],
+  baselineY = 0,
+  options: TextLayoutOptions = {}
+): PlacedGlyph[] {
+  const advanceStrategy = options.advance ?? defaultAdvanceWidthStrategy;
   let cursorX = 0;
   const placed: PlacedGlyph[] = [];
 
   for (const { font, code, size } of glyphs) {
-    const shape = font.getLayoutCharShape(code, size);
+    const shape = font.getLayoutCharShape(code, size, advanceStrategy);
     if (!shape) {
       continue;
     }
@@ -78,7 +92,7 @@ export function layoutTextRun(glyphs: TextRunGlyph[], baselineY = 0): PlacedGlyp
       shape: placeGlyphOnBaseline(shape, cursorX, baselineY),
       x: cursorX,
     });
-    cursorX += resolveAdvanceWidth(shape, font.fontData, size);
+    cursorX += resolveAdvanceWidth(shape, font.fontData, size, advanceStrategy);
   }
 
   return placed;
