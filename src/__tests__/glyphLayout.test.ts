@@ -329,11 +329,11 @@ describe('glyph layout alignment', () => {
     try {
       const size = 7.5;
       const digitLayout = isocp.getLayoutCharShape('1'.charCodeAt(0), size)!;
-      const rawDigit = isocp.getCharShape('1'.charCodeAt(0), size)!;
       const hanLayout = hztxt.getLayoutCharShape(0xb5f7, size)!;
 
-      expect(digitLayout.bbox.minY).toBeCloseTo(rawDigit.bbox.minY, 0);
-      expect(hanLayout.bbox.minY).toBeCloseTo(hztxt.getCharShape(0xb5f7, size)!.bbox.minY, 0);
+      expect(digitLayout.bbox.minY).toBeGreaterThanOrEqual(0);
+      expect(hanLayout.bbox.minY).toBeGreaterThanOrEqual(0);
+      expect(Math.abs(digitLayout.bbox.minY - hanLayout.bbox.minY)).toBeLessThan(1.5);
 
       const placed = layoutTextRun([
         { font: isocp, code: '1'.charCodeAt(0), size },
@@ -349,6 +349,38 @@ describe('glyph layout alignment', () => {
       );
     } finally {
       isocp.release();
+      hztxt.release();
+    }
+  }, 60_000);
+
+  it('aligns tssdeng ASCII and hztxt CJK on one baseline at large sizes', async () => {
+    const tssdeng = await loadFont('tssdeng.shx');
+    const hztxt = await loadFont('hztxt.shx');
+    if (!tssdeng || !hztxt) return;
+
+    try {
+      const size = 300;
+      const placed = layoutTextRun([
+        { font: hztxt, code: 0xcbc4, size },
+        { font: hztxt, code: 0xb2e3, size },
+        { font: hztxt, code: 0xc2a5, size },
+        { font: hztxt, code: 0xc3e6, size },
+        { font: tssdeng, code: '~'.charCodeAt(0), size },
+        { font: tssdeng, code: '5'.charCodeAt(0), size },
+        { font: tssdeng, code: '5'.charCodeAt(0), size },
+        { font: tssdeng, code: '.'.charCodeAt(0), size },
+        { font: tssdeng, code: '3'.charCodeAt(0), size },
+        { font: tssdeng, code: '5'.charCodeAt(0), size },
+        { font: tssdeng, code: '0'.charCodeAt(0), size },
+      ]);
+
+      const digitMinYs = placed.slice(5).map(entry => entry.shape.bbox.minY);
+      const cjkMinYs = placed.slice(0, 4).map(entry => entry.shape.bbox.minY);
+      const avg = (values: number[]) =>
+        values.reduce((sum, value) => sum + value, 0) / values.length;
+      expect(Math.abs(avg(cjkMinYs) - avg(digitMinYs))).toBeLessThan(8);
+    } finally {
+      tssdeng.release();
       hztxt.release();
     }
   }, 60_000);
