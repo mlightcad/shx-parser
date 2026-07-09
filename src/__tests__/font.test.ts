@@ -455,7 +455,6 @@ describe('ShxFont', () => {
     it('returns false for non-unifont fonts', () => {
       const fontData = createBigFontData({ 1: new Uint8Array([0x01, 0x80, 0x02, 0x00]) });
       const size = 16;
-      const metrics = computeFontMetrics(fontData.content, size);
       const glyph = new ShxShape(new Point(8, 0), [[new Point(1, 2), new Point(6, 12)]]);
 
       expect(
