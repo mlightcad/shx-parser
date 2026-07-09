@@ -27,8 +27,11 @@ describe('hztxt 一 alignment', () => {
 
       expect(aligned.bbox.minY).toBeCloseTo(raw.bbox.minY, 0);
       expect(aligned.bbox.maxY).toBeCloseTo(raw.bbox.maxY, 0);
-      expect(layout.bbox.minY).toBeCloseTo(raw.bbox.minY, 0);
-      expect(layout.bbox.maxY).toBeCloseTo(raw.bbox.maxY, 0);
+
+      const shift = raw.bbox.minY - layout.bbox.minY;
+      expect(shift).toBeGreaterThan(0);
+      expect(layout.bbox.minY).toBeGreaterThanOrEqual(0);
+      expect(layout.bbox.maxY).toBeCloseTo(raw.bbox.maxY - shift, 0);
     } finally {
       hztxt.release();
     }

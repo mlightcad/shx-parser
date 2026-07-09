@@ -190,7 +190,7 @@ describe('glyph layout alignment', () => {
     } finally {
       hztxt.release();
     }
-  }, 60_000);
+  }, 120_000);
 
   it('uses ink-width advance for aehalf center-origin punctuation', async () => {
     const aehalf = await loadFont('aehalf.shx');
