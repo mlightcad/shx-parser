@@ -30,13 +30,20 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22.14.0
+          node-version: 22.22.2
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
           scope: '@mlightcad'
 
+      # Node 22.22.x bundles a broken npm (cannot self-upgrade). Bootstrap npm 11
+      # via pnpm, then install it into the Node prefix so publish uses OIDC correctly.
       - name: Upgrade npm for Trusted Publishing
-        run: npm install -g npm@latest
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          pnpm add -g npm@11
+          PNPM_NPM="$(pnpm bin -g)/npm"
+          "$PNPM_NPM" install -g npm@11
+          npm --version
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -48,7 +55,7 @@ jobs:
         run: pnpm build
 
       - name: Run tests
-        run: pnpm test
+        run: pnpm test:ci
 
       # Authenticates via npm Trusted Publishing (OIDC); no NPM_TOKEN needed.
       # Configure the package on npmjs.com → Settings → Trusted publishing:
@@ -87,7 +94,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22.14.0
+          node-version: 22.22.2
           cache: 'pnpm'
 
       - name: Install dependencies

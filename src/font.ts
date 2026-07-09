@@ -6,6 +6,7 @@ import { defaultAdvanceWidthStrategy, ShxAdvanceWidthStrategy } from './advanceW
 import {
   alignShxGlyphForLayout,
   computeFontMetrics,
+  detectBigfontBaselineInkPadding,
   detectUnifontBaselineOriginFont,
   ShxFontMetrics,
 } from './glyphLayout';
@@ -22,6 +23,7 @@ export {
 export {
   alignShxGlyphForLayout,
   computeFontMetrics,
+  detectBigfontBaselineInkPadding,
   detectUnifontBaselineOriginFont,
   shapeEncodedWithTopOrigin,
   unifontUsesBaselineOrigin,
@@ -40,6 +42,8 @@ export class ShxFont {
   private readonly shapeParser: ShxShapeParser;
   /** Cached UNIFONT baseline-origin detection (size-independent). */
   private unifontBaselineOriginFont?: boolean;
+  /** Cached BIGFONT baseline ink padding in native font units (size-independent). */
+  private bigfontBaselineInkPaddingNative?: number;
 
   /**
    * Creates a new ShxFont instance.
@@ -150,8 +154,26 @@ export class ShxFont {
       this.fontData,
       size,
       advanceStrategy,
-      this.usesUnifontBaselineOriginFont(size)
+      this.usesUnifontBaselineOriginFont(size),
+      this.getBigfontBaselineInkPaddingNative()
     );
+  }
+
+  /**
+   * Returns the cached median baseline ink padding for BIGFONT layout normalization.
+   *
+   * @returns Padding in native font units from shape #0 height, or 0 when not applicable
+   */
+  private getBigfontBaselineInkPaddingNative(): number {
+    if (this.bigfontBaselineInkPaddingNative === undefined) {
+      const sampleSize = this.fontData.content.height;
+      this.bigfontBaselineInkPaddingNative = detectBigfontBaselineInkPadding(
+        this.fontData,
+        (code) => this.getCharShape(code, sampleSize),
+        sampleSize
+      );
+    }
+    return this.bigfontBaselineInkPaddingNative;
   }
 
   /**

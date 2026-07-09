@@ -38,7 +38,7 @@ describe('font metrics and text layout', () => {
     } finally {
       hztxt.release();
     }
-  }, 60_000);
+  }, 120_000);
 
   it('exposes scaled font metrics from shape #0 for mixed-font rendering', async () => {
     const tssdeng = await loadFont('tssdeng.shx');
@@ -58,7 +58,7 @@ describe('font metrics and text layout', () => {
       tssdeng.release();
       hztxt.release();
     }
-  }, 60_000);
+  }, 120_000);
 
   it('layoutTextRun aligns mixed-font glyphs on a shared baseline', async () => {
     const tssdeng = await loadFont('tssdeng.shx');

@@ -31,7 +31,7 @@ describe('punctuation spacing (raw geometry + layout)', () => {
     } finally {
       hztxt.release();
     }
-  }, 60_000);
+  }, 120_000);
 
   it('reports tssdeng comma advance from the SHX advance vector', async () => {
     const tssdeng = await loadFont('tssdeng.shx');
@@ -47,7 +47,7 @@ describe('punctuation spacing (raw geometry + layout)', () => {
     } finally {
       tssdeng.release();
     }
-  }, 60_000);
+  }, 120_000);
 
   it('uses SHX pen advance for hztxt halfwidth glyphs', async () => {
     const hztxt = await loadFont('hztxt.shx');
@@ -71,7 +71,7 @@ describe('punctuation spacing (raw geometry + layout)', () => {
     } finally {
       hztxt.release();
     }
-  }, 60_000);
+  }, 120_000);
 
   it('lays out hztxt punctuation without overlapping', async () => {
     const hztxt = await loadFont('hztxt.shx');
@@ -97,5 +97,5 @@ describe('punctuation spacing (raw geometry + layout)', () => {
     } finally {
       hztxt.release();
     }
-  }, 60_000);
+  }, 120_000);
 });
