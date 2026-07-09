@@ -49,7 +49,7 @@ jobs:
         run: pnpm build
 
       - name: Run tests
-        run: pnpm test -- --runInBand
+        run: pnpm test:ci
 
       # Authenticates via npm Trusted Publishing (OIDC); no NPM_TOKEN needed.
       # Configure the package on npmjs.com → Settings → Trusted publishing:

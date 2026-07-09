@@ -17,6 +17,7 @@
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly",
     "test": "jest",
+    "test:ci": "jest --runInBand",
     "example": "npm run build && cp-cli dist examples/dist && node examples/example.js",
     "serve": "npm run build && cp-cli dist examples/dist && vite",
     "format": "prettier --write \"src/**/*.{ts,tsx,js,jsx,json}\"",
